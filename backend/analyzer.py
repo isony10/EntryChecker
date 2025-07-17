@@ -53,15 +53,27 @@ def flag_weekend_txn(df, date_col='전표일자'):
 
 
 
-def flag_amount_over(df, threshold):
-    return (df['차변금액'] > threshold) | (df['대변금액'] > threshold)
+def flag_amount_over(df, op, threshold):
+    series = (df['차변금액'] , df['대변금액'])
+    if   op == '>':  return (series[0] >  threshold) | (series[1] >  threshold)
+    if   op == '>=': return (series[0] >= threshold) | (series[1] >= threshold)
+    if   op == '=':  return (series[0] == threshold) | (series[1] == threshold)
+    if   op == '<=': return (series[0] <= threshold) | (series[1] <= threshold)
+    if   op == '<':  return (series[0] <  threshold) | (series[1] <  threshold)
+    return pd.Series(False, index=df.index)   # 예외 대응
 
 def flag_keyword(df, keywords):
     kw_list = [k.strip() for k in keywords.split(',') if k.strip()]
     if not kw_list:
         return pd.Series(False, index=df.index)
-    pattern = '|'.join(kw_list)
-    return df['계정과목'].astype(str).str.contains(pattern, na=False)
+
+    pattern = '|'.join(map(re.escape, kw_list))
+    # 계정과목 + 적요 열 모두 검색, 대소문자 무시
+    subject = df['계정과목'].astype(str)
+    desc    = df.get('적요', pd.Series('', index=df.index)).astype(str)
+
+    return subject.str.contains(pattern, case=False, na=False) | \
+           desc.str.contains(pattern, case=False, na=False)
 
 def analyze_journal(df, active_rules, rule_values):
     # 숫자 열 안전 변환
@@ -86,8 +98,10 @@ def analyze_journal(df, active_rules, rule_values):
 
 
     if 'amount_over' in active_rules:
-        thr = float(rule_values.get('amount_over', 0))
-        add_rule(flag_amount_over(df, thr), rule_num)
+        cond = rule_values.get('amount_over', {})
+        op   = cond.get('op', '>')
+        thr  = float(cond.get('value', 0))
+        add_rule(flag_amount_over(df, op, thr), rule_num)
     rule_num += 1
 
     if 'keyword_search' in active_rules:

@@ -2,9 +2,9 @@
 
 const rules = [
   { id: 'weekend_txn', name: '주말·공휴일 거래', type: 'boolean', enabled: false },
-  { id: 'amount_over',     name: '금액 초과',       type: 'input',   value: 10000000, enabled: false },
-  { id: 'keyword_search',  name: '특정 키워드',     type: 'input',   value: '가지급금,대여금', enabled: false }
-  
+  { id: 'amount_over', name: '금액 조건', type: 'amount',  op: '>', value: 10000000,enabled: false },
+  { id: 'keyword_search',  name: '특정 키워드', type: 'input',   value: '가지급금,대여금', enabled: false }
+
 ];
 
 const fileInput       = document.getElementById('file-upload');
@@ -27,10 +27,28 @@ function renderRules() {
     card.onclick = () => { r.enabled = !r.enabled; renderRules(); };
 
     let html = `<h4 class="font-bold">${i + 1}. ${r.name}</h4>`;
-    if (r.type === 'input') {
-      html += `<input type="text" value="${r.value}" class="mt-2 w-full p-1 border rounded"
-                 onclick="event.stopPropagation();"
-                 oninput="rules[${i}].value=this.value">`;
+    if (r.type === 'amount') {
+      html += `
+        <div class="flex space-x-2 mt-2">
+          <select class="border rounded p-1"
+                  onchange="rules[${i}].op=this.value"
+                  onclick="event.stopPropagation();">
+            ${['>','>=','=','<=','<'].map(op =>
+              `<option value="${op}" ${op===r.op?'selected':''}>${op}</option>`
+            ).join('')}
+          </select>
+          <input type="number" class="border rounded p-1 flex-grow"
+                value="${r.value}"
+                onclick="event.stopPropagation();"
+                oninput="rules[${i}].value=parseFloat(this.value)">
+        </div>`;
+    }
+    else if (r.type === 'input') {
+      html += `
+        <input type="text" class="border rounded p-1 mt-2 w-full"
+               value="${r.value}"
+               onclick="event.stopPropagation();"
+               oninput="rules[${i}].value=this.value">`;
     }
     card.innerHTML = html;
     ruleList.appendChild(card);
@@ -114,7 +132,11 @@ runBtn.addEventListener('click', async () => {
   if (!active.length) { log('활성화 규칙이 없습니다.', 'error'); return; }
 
   const vals = {};
-  rules.forEach(r => { if (r.enabled && r.type === 'input') vals[r.id] = r.value; });
+  rules.forEach(r => {
+    if (!r.enabled) return;
+    if (r.type === 'input')   vals[r.id] = r.value;
+    if (r.type === 'amount')  vals[r.id] = { op: r.op, value: r.value };
+  });
 
   await fetchAndRender(file, active, vals);
 });
@@ -138,8 +160,12 @@ async function fetchAndRender(file, activeRules, ruleVals) {
     /* 하이라이트 셋 만들기 */
     let hiSet = new Set(data.flagged_indices);
     if (chkWholeVoucher.checked && hiSet.size) {
-      const vouchers = new Set([...hiSet].map(i => journalData[i]['전표번호']));
-      journalData.forEach((r,i)=>{ if (vouchers.has(r['전표번호'])) hiSet.add(i); });
+      const keys = new Set([...hiSet].map(i =>
+          `${journalData[i]['전표일자']}|${journalData[i]['전표번호']}`));
+      journalData.forEach((row, idx) => {
+        const key = `${row['전표일자']}|${row['전표번호']}`;
+        if (keys.has(key)) hiSet.add(idx);
+      });
     }
 
     /* rule_map → key가 문자열이라 Number로 변환 */
