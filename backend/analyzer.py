@@ -49,29 +49,42 @@ def flag_weekend_txn(df, date_col='전표일자'):
 
     is_weekend = dt.dt.weekday.isin([5, 6])          # 토(5), 일(6)
     is_holiday = dt.apply(lambda d: d.date() in KR_HOLIDAYS if pd.notna(d) else False)
-    return dt.dt.weekday.isin([5, 6]) | is_holiday         # 둘 중 하나면 강조
+    return is_weekend | is_holiday         # 둘 중 하나면 강조
 
 
 
-def flag_amount_over(df, threshold):
-    return (df['차변금액'] > threshold) | (df['대변금액'] > threshold)
+def flag_amount_over(df, op, thr, column):
+    if op == '>': return df[column] > thr
+    if op == '>=': return df[column] >= thr
+    if op == '==': return df[column] == thr
+    if op == '<=': return df[column] <= thr
+    if op == '<': return df[column] < thr
+    return pd.Series(False, index=df.index)
 
 def flag_keyword(df, keywords):
     kw_list = [k.strip() for k in keywords.split(',') if k.strip()]
     if not kw_list:
         return pd.Series(False, index=df.index)
-    pattern = '|'.join(kw_list)
-    return df['계정과목'].astype(str).str.contains(pattern, na=False)
+
+    pattern = '|'.join(map(re.escape, kw_list))
+    # 계정과목 + 적요 열 모두 검색, 대소문자 무시
+    subject = df['계정과목'].astype(str)
+    desc    = df.get('적요', pd.Series('', index=df.index)).astype(str)
+
+    return subject.str.contains(pattern, case=False, na=False) | \
+           desc.str.contains(pattern, case=False, na=False)
 
 def analyze_journal(df, active_rules, rule_values):
+    import pandas as pd
+    import re
+
     # 숫자 열 안전 변환
-    df['차변금액'] = pd.to_numeric(df['차변금액'], errors='coerce').fillna(0)
-    df['대변금액'] = pd.to_numeric(df['대변금액'], errors='coerce').fillna(0)
+    df['차변금액'] = pd.to_numeric(df.get('차변금액', 0), errors='coerce').fillna(0)
+    df['대변금액'] = pd.to_numeric(df.get('대변금액', 0), errors='coerce').fillna(0)
 
-    flags      = pd.Series(False, index=df.index)
-    rule_map   = {i: [] for i in df.index}  # index → [rule 번호]
+    flags    = pd.Series(False, index=df.index)
+    rule_map = {i: [] for i in df.index}
 
-    # rule 번호는 1부터
     def add_rule(series, num):
         nonlocal flags, rule_map
         match_idx = series[series].index
@@ -84,10 +97,18 @@ def analyze_journal(df, active_rules, rule_values):
         add_rule(flag_weekend_txn(df), rule_num)
     rule_num += 1
 
+    if 'amount_over_debit' in active_rules:
+        cond = rule_values.get('amount_over_debit', {})
+        op   = cond.get('op', '>')
+        thr  = float(cond.get('value', 0))
+        add_rule(flag_amount_over(df, op, thr, column='차변금액'), rule_num)
+    rule_num += 1
 
-    if 'amount_over' in active_rules:
-        thr = float(rule_values.get('amount_over', 0))
-        add_rule(flag_amount_over(df, thr), rule_num)
+    if 'amount_over_credit' in active_rules:
+        cond = rule_values.get('amount_over_credit', {})
+        op   = cond.get('op', '>')
+        thr  = float(cond.get('value', 0))
+        add_rule(flag_amount_over(df, op, thr, column='대변금액'), rule_num)
     rule_num += 1
 
     if 'keyword_search' in active_rules:
@@ -102,5 +123,7 @@ def analyze_journal(df, active_rules, rule_values):
         "headers": headers,
         "rows": rows,
         "flagged_indices": flagged_idx,
-        "rule_map": {str(k): v for k, v in rule_map.items()}  # JSON 직렬화 위해 str key
+        "rule_map": {str(k): v for k, v in rule_map.items()}
     }
+
+
