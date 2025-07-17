@@ -1,9 +1,13 @@
+import sys
 import os
 from flask import Flask, request, render_template, jsonify
 from flask import Response
 import pandas as pd
 import math
 import json
+if __name__ == "__main__":
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from backend.analyzer import analyze_journal
 
 app = Flask(__name__,
