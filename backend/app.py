@@ -4,7 +4,7 @@ from flask import Response
 import pandas as pd
 import math
 import json
-from analyzer import analyze_journal
+from backend.analyzer import analyze_journal
 
 app = Flask(__name__,
             static_folder=os.path.join(os.path.dirname(__file__), '..', 'frontend', 'static'),
