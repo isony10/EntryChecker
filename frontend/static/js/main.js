@@ -31,22 +31,24 @@ function renderRules() {
     let html = `<h4 class="font-bold">${i + 1}. ${r.name}</h4>`;
 
     /* ① 금액 조건 (차변·대변) ― 연산자 + 값 입력 */
-    if (r.type === 'amount') {
-      html += `
-        <div class="mt-2 flex gap-2 items-center">
-          <select class="border rounded p-1"
-                  onchange="rules[${i}].op=this.value; event.stopPropagation();">
-            ${['>', '>=', '==', '<=', '<'].map(op =>
-              `<option value="${op}" ${op === r.op ? 'selected' : ''}>${op}</option>`
-            ).join('')}
-          </select>
-          <input type="number" class="border rounded p-1 w-24"
-                 value="${r.value}"
-                 onclick="event.stopPropagation();"
-                 oninput="rules[${i}].value=parseFloat(this.value || 0)">
-          원
-        </div>`;
-    }
+if (r.type === 'amount') {
+  html += `
+    <div class="mt-2 flex gap-2 items-center">
+      <select class="border rounded p-1"
+              onchange="rules[${i}].op=this.value;"
+              onclick="event.stopPropagation();"
+              onmousedown="event.stopPropagation();">
+        ${['>', '>=', '==', '<=', '<'].map(op =>
+          `<option value="${op}" ${op === r.op ? 'selected' : ''}>${op}</option>`
+        ).join('')}
+      </select>
+      <input type="number" class="border rounded p-1 w-24"
+             value="${r.value}"
+             onclick="event.stopPropagation();"
+             oninput="rules[${i}].value=parseFloat(this.value || 0)">
+      원
+    </div>`;
+  }
 
     /* ② 텍스트 입력형 (키워드) */
     else if (r.type === 'input') {
