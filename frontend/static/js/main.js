@@ -128,12 +128,13 @@ fileInput.addEventListener('change', async e => {
     });
   } else {
     // Excel: 규칙 없이 백엔드 호출 → 미리보기
-    await fetchAndRender(file, [], {});
+    await fetchAndRender(file, [], {},'AND');
   }
 });
 
 /* ---------- 분석 실행 ---------- */
 runBtn.addEventListener('click', async () => {
+  const logicOp = document.getElementById('logic-op').value;
   const file = fileInput.files[0];
   if (!file) { log('파일을 먼저 선택하세요.', 'error'); return; }
 
@@ -147,15 +148,16 @@ runBtn.addEventListener('click', async () => {
     if (r.type === 'amount')  vals[r.id] = { op: r.op, value: r.value };
   });
 
-  await fetchAndRender(file, active, vals);
+  await fetchAndRender(file, active, vals, logicOp);
 });
 
 /* ---------- 공통 fetch ---------- */
-async function fetchAndRender(file, activeRules, ruleVals) {
+async function fetchAndRender(file, activeRules, ruleVals, logicOp = 'AND') {
   const fd = new FormData();
   fd.append('file', file);
   fd.append('active_rules', JSON.stringify(activeRules));
   fd.append('values', JSON.stringify(ruleVals));
+  fd.append('logic_op',     logicOp);
 
   loadingBadge.classList.remove('hidden');
   try {

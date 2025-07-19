@@ -53,13 +53,15 @@ def flag_weekend_txn(df, date_col='전표일자'):
 
 
 
-def flag_amount_over(df, op, thr, column):
-    if op == '>': return df[column] > thr
-    if op == '>=': return df[column] >= thr
-    if op == '==': return df[column] == thr
-    if op == '<=': return df[column] <= thr
-    if op == '<': return df[column] < thr
-    return pd.Series(False, index=df.index)
+def flag_amount_over(df, op, thr, is_debit=True):
+    col = '차변금액' if is_debit else '대변금액'
+
+    if   op == '>':  return df[col] >  thr
+    elif op == '>=': return df[col] >= thr
+    elif op == '==': return df[col] == thr
+    elif op == '<=': return df[col] <= thr
+    elif op == '<':  return df[col] <  thr
+    else:            return pd.Series(False, index=df.index)
 
 def flag_keyword(df, keywords):
     kw_list = [k.strip() for k in keywords.split(',') if k.strip()]
@@ -74,55 +76,75 @@ def flag_keyword(df, keywords):
     return subject.str.contains(pattern, case=False, na=False) | \
            desc.str.contains(pattern, case=False, na=False)
 
-def analyze_journal(df, active_rules, rule_values):
-    import pandas as pd
-    import re
+def analyze_journal(df, active_rules, rule_values, logic_op: str = 'AND'):
 
-    # 숫자 열 안전 변환
+    # ───────────────── 1. 숫자 열 변환 ──────────────────
     df['차변금액'] = pd.to_numeric(df.get('차변금액', 0), errors='coerce').fillna(0)
     df['대변금액'] = pd.to_numeric(df.get('대변금액', 0), errors='coerce').fillna(0)
 
-    flags    = pd.Series(False, index=df.index)
-    rule_map = {i: [] for i in df.index}
+    # ───────────────── 2. 규칙별 mask 계산 ──────────────────
+    masks     = []                  # 모든 mask 리스트
+    rule_map  = {i: [] for i in df.index}   # index → [규칙 번호]
+    rule_no   = 1                   # 1부터 부여
 
-    def add_rule(series, num):
-        nonlocal flags, rule_map
-        match_idx = series[series].index
-        flags |= series
-        for idx in match_idx:
-            rule_map[idx].append(num)
-
-    rule_num = 1
+    # 주말·공휴일
     if 'weekend_txn' in active_rules:
-        add_rule(flag_weekend_txn(df), rule_num)
-    rule_num += 1
+        m = flag_weekend_txn(df)
+        masks.append(m)
+        for idx in m[m].index: rule_map[idx].append(rule_no)
+    rule_no += 1
 
+    # 차변 금액 조건
     if 'amount_over_debit' in active_rules:
         cond = rule_values.get('amount_over_debit', {})
         op   = cond.get('op', '>')
         thr  = float(cond.get('value', 0))
-        add_rule(flag_amount_over(df, op, thr, column='차변금액'), rule_num)
-    rule_num += 1
+        m = flag_amount_over(df, op, thr, is_debit=True)   # ← 차변
+        masks.append(m)
+        for idx in m[m].index: rule_map[idx].append(rule_no)
+    rule_no += 1
 
+    # 대변 금액 조건
     if 'amount_over_credit' in active_rules:
         cond = rule_values.get('amount_over_credit', {})
         op   = cond.get('op', '>')
         thr  = float(cond.get('value', 0))
-        add_rule(flag_amount_over(df, op, thr, column='대변금액'), rule_num)
-    rule_num += 1
+        m = flag_amount_over(df, op, thr, is_debit=False)  # ← 대변
+        masks.append(m)
+        for idx in m[m].index: rule_map[idx].append(rule_no)
+    rule_no += 1
 
+    # 키워드 조건
     if 'keyword_search' in active_rules:
         kw = rule_values.get('keyword_search', '')
-        add_rule(flag_keyword(df, kw), rule_num)
+        m  = flag_keyword(df, kw)
+        masks.append(m)
+        for idx in m[m].index: rule_map[idx].append(rule_no)
 
-    flagged_idx = flags[flags].index.tolist()
-    headers = list(df.columns)
-    rows    = df.to_dict('records')
+    # ───────────────── 3. 모든 mask 결합 ────────────────────
+    if not masks:
+        final_mask = pd.Series(False, index=df.index)
+    elif logic_op.upper() == 'OR':
+        final_mask = masks[0]
+        for m in masks[1:]:
+            final_mask = final_mask | m
+    else:  # 기본 AND
+        final_mask = masks[0]
+        for m in masks[1:]:
+            final_mask = final_mask & m
 
+    flagged = list(final_mask[final_mask].index)
+
+    df_disp = df.copy()
+    for col in ('차변금액', '대변금액'):
+        if col in df_disp.columns:
+            df_disp[col] = df_disp[col].apply(lambda v: f"{int(round(v)):,}")
+
+    # ───────────────── 4. 결과 패키징 ──────────────────────
     return {
-        "headers": headers,
-        "rows": rows,
-        "flagged_indices": flagged_idx,
+        "headers": list(df.columns),
+        "rows": df_disp.to_dict('records'),
+        "flagged_indices": flagged,
         "rule_map": {str(k): v for k, v in rule_map.items()}
     }
 

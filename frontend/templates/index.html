@@ -47,7 +47,7 @@
         <input type="file" id="file-upload" class="hidden" accept=".csv,.xls,.xlsx">
       </div>
 
-        <!-- ⏳ 로딩 배지 -->
+        <!-- 로딩 배지 -->
         <span id="loading" class="hidden text-sm font-semibold text-blue-600">
           분석중… ⏳
         </span>
@@ -76,6 +76,12 @@
           <input type="checkbox" id="chk-whole-voucher" class="mr-1">
           전표세트 전체 강조
         </label>
+
+        <!--And,OR 기능-->
+        <select id="logic-op" class="border px-1 py-1 rounded">
+          <option value="AND" selected>AND</option>
+          <option value="OR">OR</option>
+        </select>
       </div>
 
       <!-- 규칙 카드 리스트 -->
