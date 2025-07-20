@@ -30,10 +30,6 @@ def clean_nan(obj):
 
 #CSV 읽기 함수
 def read_csv_flexible(file):
-    """
-    쉼표·세미콜론·탭 어떤 구분자여도 DataFrame 을 반환.
-    인코딩도 CP949 → UTF‑8 순으로 시도.
-    """
     enc_try = ['cp949', 'utf-8-sig', 'utf-8']
     for enc in enc_try:
         try:
@@ -54,6 +50,8 @@ def analyze():
     filename = file.filename
     active_rules = json.loads(request.form['active_rules'])
     rule_values = json.loads(request.form['values'])
+    logic_op    = request.form.get('logic_op', 'AND')
+    logic_tree  = json.loads(request.form.get('logic_tree', '{}'))
 
     try:
         if filename.endswith('.csv'):
@@ -67,13 +65,19 @@ def analyze():
         else:
             return "Unsupported file type", 400
 
-        result = analyze_journal(df, active_rules, rule_values)
+        result = analyze_journal(df, active_rules, rule_values, logic_op, logic_tree)
         cleaned = clean_nan(result)
 
         return Response(json.dumps(cleaned, ensure_ascii=False), mimetype='application/json')
 
     except Exception as e:
         return f"File read error: {str(e)}", 400
+
+
+@app.route('/submit_logic', methods=['POST'])
+def submit_logic():
+    data = request.get_json(silent=True) or {}
+    return jsonify({'received': data})
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
