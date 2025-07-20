@@ -76,40 +76,40 @@ def flag_keyword(df, keywords):
     return subject.str.contains(pattern, case=False, na=False) | \
            desc.str.contains(pattern, case=False, na=False)
 
-def analyze_journal(df, active_rules, rule_values, logic_op: str = 'AND'):
+def analyze_journal(
+    df,
+    active_rules,
+    rule_values,
+    logic_op: str = 'AND',
+    logic_tree: dict | None = None,
+):
 
     # ───────────────── 1. 숫자 열 변환 ──────────────────
     df['차변금액'] = pd.to_numeric(df.get('차변금액', 0), errors='coerce').fillna(0)
     df['대변금액'] = pd.to_numeric(df.get('대변금액', 0), errors='coerce').fillna(0)
 
     # ───────────────── 2. 규칙별 mask 계산 ──────────────────
-    masks     = []                  # 모든 mask 리스트
-    rule_map  = {i: [] for i in df.index}   # index → [규칙 번호]
-    rule_no   = 1                   # 1부터 부여
+    masks = []  # 모든 mask 리스트 (순서 유지)
+    rule_map = {i: [] for i in df.index}  # index → [규칙 번호]
+    rule_no = 1  # 1부터 부여
+    rule_masks: dict[str, pd.Series] = {}
 
     # 주말·공휴일
     if 'weekend_txn' in active_rules:
         m = flag_weekend_txn(df)
+        rule_masks['weekend_txn'] = m
         masks.append(m)
         for idx in m[m].index: rule_map[idx].append(rule_no)
     rule_no += 1
 
-    # 차변 금액 조건
-    if 'amount_over_debit' in active_rules:
-        cond = rule_values.get('amount_over_debit', {})
+    # 금액 조건
+    if 'amount_over' in active_rules:
+        cond = rule_values.get('amount_over', {})
         op   = cond.get('op', '>')
         thr  = float(cond.get('value', 0))
-        m = flag_amount_over(df, op, thr, is_debit=True)   # ← 차변
-        masks.append(m)
-        for idx in m[m].index: rule_map[idx].append(rule_no)
-    rule_no += 1
-
-    # 대변 금액 조건
-    if 'amount_over_credit' in active_rules:
-        cond = rule_values.get('amount_over_credit', {})
-        op   = cond.get('op', '>')
-        thr  = float(cond.get('value', 0))
-        m = flag_amount_over(df, op, thr, is_debit=False)  # ← 대변
+        target = cond.get('target', 'debit')
+        m = flag_amount_over(df, op, thr, is_debit=(target!='credit'))
+        rule_masks['amount_over'] = m
         masks.append(m)
         for idx in m[m].index: rule_map[idx].append(rule_no)
     rule_no += 1
@@ -117,12 +117,34 @@ def analyze_journal(df, active_rules, rule_values, logic_op: str = 'AND'):
     # 키워드 조건
     if 'keyword_search' in active_rules:
         kw = rule_values.get('keyword_search', '')
-        m  = flag_keyword(df, kw)
+        m = flag_keyword(df, kw)
+        rule_masks['keyword_search'] = m
         masks.append(m)
         for idx in m[m].index: rule_map[idx].append(rule_no)
 
     # ───────────────── 3. 모든 mask 결합 ────────────────────
-    if not masks:
+    def eval_tree(node) -> pd.Series:
+        if not node:
+            return pd.Series(False, index=df.index)
+        if node.get('type') == 'cond':
+            rule = node.get('rule')
+            return rule_masks.get(rule, pd.Series(False, index=df.index))
+        # group
+        items = [eval_tree(it) for it in node.get('items', [])]
+        if not items:
+            return pd.Series(False, index=df.index)
+        op = node.get('op', 'AND').upper()
+        result = items[0].copy()
+        for m in items[1:]:
+            if op == 'OR':
+                result = result | m
+            else:
+                result = result & m
+        return result
+
+    if logic_tree:
+        final_mask = eval_tree(logic_tree)
+    elif not masks:
         final_mask = pd.Series(False, index=df.index)
     elif logic_op.upper() == 'OR':
         final_mask = masks[0]
