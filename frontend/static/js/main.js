@@ -45,6 +45,7 @@ const $logicTree = document.getElementById('logic-tree');
 const $log       = document.getElementById('log-content');
 const $tableWrap = document.getElementById('table-container');
 const $chkSet    = document.getElementById('chk-whole-voucher');
+const $chkOnly   = document.getElementById('chk-show-matching-only');
 const $loading   = document.getElementById('loading');
 
 /* ───────── 3. UI – 규칙 카드 렌더 ───────── */
@@ -151,7 +152,10 @@ function renderGroup(g){
   wrap.appendChild(items);
 
   new Sortable(items,{
-    group:'nested', animation:150,
+    group:'nested',
+    animation:150,
+    filter:'input,select,textarea',
+    preventOnFilter:false,
     onEnd:evt=>{
       const from=findGroupById(logicTree, parseInt(evt.from.dataset.groupId));
       const to=findGroupById(logicTree, parseInt(evt.to.dataset.groupId));
@@ -167,7 +171,6 @@ function renderItem(item){
   if(item.type==='group') return renderGroup(item);
   const d=document.createElement('div');
   d.className='border rounded px-2 py-1 flex items-center gap-2';
-  d.draggable=true;
   d.dataset.itemId=item.id;
 
   const label=document.createElement('span');
@@ -340,14 +343,26 @@ async function fetchAndRender(file,active,vals,logic='AND',tree={}){
     dataHeaders=data.headers; journalData=data.rows;
 
     /* 하이라이트 셋 */
-    let hi=new Set(data.flagged_indices);
+    const flagged=new Set(data.flagged_indices);
+    let hi=new Set(flagged);
     if($chkSet.checked){
-      const keys=new Set([...hi].map(i=>`${journalData[i]['전표일자']}|${journalData[i]['전표번호']}`));
+      const keys=new Set([...flagged].map(i=>`${journalData[i]['전표일자']}|${journalData[i]['전표번호']}`));
       journalData.forEach((r,i)=>{ if(keys.has(`${r['전표일자']}|${r['전표번호']}`)) hi.add(i); });
     }
+
+    /* 표시할 행 선택 */
+    let rows=journalData.map((r,i)=>({__idx:i,...r}));
+    if($chkOnly.checked){
+      rows=rows.filter(r=>hi.has(r.__idx));
+    }
+
+    const hiDisp=new Set();
+    rows.forEach((r,i)=>{ if(hi.has(r.__idx)) hiDisp.add(i); });
+    rows=rows.map(r=>{ const c={...r}; delete c.__idx; return c; });
+
     const rMap={}; for(const k in data.rule_map) rMap[+k]=data.rule_map[k];
-    renderTable(journalData,hi,rMap);
-    log(`분석 완료 – ${hi.size}행 하이라이트`,'success');
+    renderTable(rows,hiDisp,rMap);
+    log(`분석 완료 – ${hiDisp.size}행 하이라이트`,'success');
   }catch(e){ log('분석 오류: '+e.message,'error'); }
   finally{ $loading.classList.add('hidden'); }
 }

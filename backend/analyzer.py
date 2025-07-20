@@ -94,43 +94,63 @@ def analyze_journal(
     rule_no = 1  # 1부터 부여
     rule_masks: dict[str, pd.Series] = {}
 
-    # 주말·공휴일
-    if 'weekend_txn' in active_rules:
-        m = flag_weekend_txn(df)
-        rule_masks['weekend_txn'] = m
-        masks.append(m)
-        for idx in m[m].index: rule_map[idx].append(rule_no)
-    rule_no += 1
+    if not (logic_tree and logic_tree.get('items')):
+        # 주말·공휴일
+        if 'weekend_txn' in active_rules:
+            m = flag_weekend_txn(df)
+            rule_masks['weekend_txn'] = m
+            masks.append(m)
+            for idx in m[m].index:
+                rule_map[idx].append(rule_no)
+        rule_no += 1
 
-    # 금액 조건
-    if 'amount_over' in active_rules:
-        cond = rule_values.get('amount_over', {})
-        op   = cond.get('op', '>')
-        thr  = float(cond.get('value', 0))
-        target = cond.get('target', 'debit')
-        m = flag_amount_over(df, op, thr, is_debit=(target!='credit'))
-        rule_masks['amount_over'] = m
-        masks.append(m)
-        for idx in m[m].index: rule_map[idx].append(rule_no)
-    rule_no += 1
+        # 금액 조건
+        if 'amount_over' in active_rules:
+            cond = rule_values.get('amount_over', {})
+            op = cond.get('op', '>')
+            thr = float(cond.get('value', 0))
+            target = cond.get('target', 'debit')
+            m = flag_amount_over(df, op, thr, is_debit=(target != 'credit'))
+            rule_masks['amount_over'] = m
+            masks.append(m)
+            for idx in m[m].index:
+                rule_map[idx].append(rule_no)
+        rule_no += 1
 
-    # 키워드 조건
-    if 'keyword_search' in active_rules:
-        kw = rule_values.get('keyword_search', '')
-        m = flag_keyword(df, kw)
-        rule_masks['keyword_search'] = m
-        masks.append(m)
-        for idx in m[m].index: rule_map[idx].append(rule_no)
+        # 키워드 조건
+        if 'keyword_search' in active_rules:
+            kw = rule_values.get('keyword_search', '')
+            m = flag_keyword(df, kw)
+            rule_masks['keyword_search'] = m
+            masks.append(m)
+            for idx in m[m].index:
+                rule_map[idx].append(rule_no)
 
     # ───────────────── 3. 모든 mask 결합 ────────────────────
-    def eval_tree(node) -> pd.Series:
+    def eval_node(node) -> pd.Series:
+        nonlocal rule_no
         if not node:
             return pd.Series(False, index=df.index)
         if node.get('type') == 'cond':
             rule = node.get('rule')
-            return rule_masks.get(rule, pd.Series(False, index=df.index))
-        # group
-        items = [eval_tree(it) for it in node.get('items', [])]
+            if rule == 'weekend_txn':
+                m = flag_weekend_txn(df)
+            elif rule == 'amount_over':
+                op = node.get('op', '>')
+                thr = float(node.get('value', 0))
+                target = node.get('target', 'debit')
+                m = flag_amount_over(df, op, thr, is_debit=(target != 'credit'))
+            elif rule == 'keyword_search':
+                kw = node.get('value', '')
+                m = flag_keyword(df, kw)
+            else:
+                m = pd.Series(False, index=df.index)
+            for idx in m[m].index:
+                rule_map[idx].append(rule_no)
+            rule_no += 1
+            return m
+
+        items = [eval_node(it) for it in node.get('items', [])]
         if not items:
             return pd.Series(False, index=df.index)
         op = node.get('op', 'AND').upper()
@@ -142,8 +162,8 @@ def analyze_journal(
                 result = result & m
         return result
 
-    if logic_tree:
-        final_mask = eval_tree(logic_tree)
+    if logic_tree and logic_tree.get('items'):
+        final_mask = eval_node(logic_tree)
     elif not masks:
         final_mask = pd.Series(False, index=df.index)
     elif logic_op.upper() == 'OR':

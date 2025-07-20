@@ -76,13 +76,19 @@
 
       <!-- 오류 조건 카드 -->
       <div class="bg-white p-4 rounded-lg shadow space-y-3">
-        <h3 class="text-lg font-bold">오류 조건 조합</h3>
-        <p class="text-sm text-gray-500">규칙 카드를 클릭하여 활성화·조합하세요.</p>
+        <h3 class="text-lg font-bold">분개장 분석기</h3>
+        <p class="text-sm text-gray-500">조건과 그룹을 추가하여 사용하세요.
+          <br>드래그 해서 조건과 그룹을 이동할 수 있습니다.
+        </p>
 
-        <!-- 전표세트 강조 체크박스 -->
+        <!-- 전표세트 강조 체크박스 및 일치 분개만 보기 -->
         <label class="inline-flex items-center text-sm font-medium">
           <input type="checkbox" id="chk-whole-voucher" class="mr-1">
           전표세트 전체 강조
+        </label>
+        <label class="inline-flex items-center text-sm font-medium ml-4">
+          <input type="checkbox" id="chk-show-matching-only" class="mr-1">
+          일치하는 분개만 보이기
         </label>
 
       </div>
