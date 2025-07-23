@@ -76,6 +76,49 @@ def flag_keyword(df, keywords):
     return subject.str.contains(pattern, case=False, na=False) | \
            desc.str.contains(pattern, case=False, na=False)
 
+def flag_party_freq(df, op, thr):
+    """전표세트 기준 거래 횟수 조건."""
+    if '거래처' not in df.columns:
+        return pd.Series(False, index=df.index)
+
+    tmp = df[['거래처', '전표일자', '전표번호']].dropna(subset=['거래처'])
+    sets = tmp.drop_duplicates()
+    counts = sets.groupby('거래처').size()
+    freq = df['거래처'].map(counts).fillna(0)
+
+    if   op == '>':  return freq >  thr
+    elif op == '>=': return freq >= thr
+    elif op == '==': return freq == thr
+    elif op == '<=': return freq <= thr
+    elif op == '<':  return freq <  thr
+    else:            return pd.Series(False, index=df.index)
+
+def flag_round_million(df):
+    """차/대변 금액이 1,000,000원 단위일 때."""
+    debit = df['차변금액'].abs()
+    credit = df['대변금액'].abs()
+    m_debit = (debit != 0) & (debit % 1_000_000 == 0)
+    m_credit = (credit != 0) & (credit % 1_000_000 == 0)
+    return m_debit | m_credit
+
+def flag_uniform_account(df):
+    """전표세트 내 계정과목이 모두 동일한 경우."""
+    if not {'전표일자', '전표번호', '계정과목'}.issubset(df.columns):
+        return pd.Series(False, index=df.index)
+    grouped = df.groupby(['전표일자', '전표번호'])['계정과목'].nunique()
+    target_sets = set(grouped[grouped == 1].index)
+    idx = list(zip(df['전표일자'], df['전표번호']))
+    return pd.Series([(k in target_sets) for k in idx], index=df.index)
+
+def flag_unbalanced_set(df):
+    """전표세트 차변 합과 대변 합이 일치하지 않음."""
+    if not {'전표일자', '전표번호', '차변금액', '대변금액'}.issubset(df.columns):
+        return pd.Series(False, index=df.index)
+    sums = df.groupby(['전표일자', '전표번호'])[['차변금액', '대변금액']].sum()
+    bad_sets = set(sums.index[sums['차변금액'] != sums['대변금액']])
+    idx = list(zip(df['전표일자'], df['전표번호']))
+    return pd.Series([(k in bad_sets) for k in idx], index=df.index)
+
 def analyze_journal(
     df,
     active_rules,
@@ -125,6 +168,46 @@ def analyze_journal(
             masks.append(m)
             for idx in m[m].index:
                 rule_map[idx].append(rule_no)
+        rule_no += 1
+
+        # 거래처 빈도 조건
+        if 'party_freq' in active_rules:
+            cond = rule_values.get('party_freq', {})
+            op = cond.get('op', '>=')
+            thr = float(cond.get('value', 0))
+            m = flag_party_freq(df, op, thr)
+            rule_masks['party_freq'] = m
+            masks.append(m)
+            for idx in m[m].index:
+                rule_map[idx].append(rule_no)
+        rule_no += 1
+
+        # 백만단위 이하 모두 0
+        if 'round_million' in active_rules:
+            m = flag_round_million(df)
+            rule_masks['round_million'] = m
+            masks.append(m)
+            for idx in m[m].index:
+                rule_map[idx].append(rule_no)
+        rule_no += 1
+
+        # 동일 계정과목 세트
+        if 'uniform_account' in active_rules:
+            m = flag_uniform_account(df)
+            rule_masks['uniform_account'] = m
+            masks.append(m)
+            for idx in m[m].index:
+                rule_map[idx].append(rule_no)
+        rule_no += 1
+
+        # 차변대변 불일치 세트
+        if 'unbalanced_set' in active_rules:
+            m = flag_unbalanced_set(df)
+            rule_masks['unbalanced_set'] = m
+            masks.append(m)
+            for idx in m[m].index:
+                rule_map[idx].append(rule_no)
+        rule_no += 1
 
     # ───────────────── 3. 모든 mask 결합 ────────────────────
     def eval_node(node) -> pd.Series:
@@ -143,6 +226,16 @@ def analyze_journal(
             elif rule == 'keyword_search':
                 kw = node.get('value', '')
                 m = flag_keyword(df, kw)
+            elif rule == 'party_freq':
+                op = node.get('op', '>=')
+                thr = float(node.get('value', 0))
+                m = flag_party_freq(df, op, thr)
+            elif rule == 'round_million':
+                m = flag_round_million(df)
+            elif rule == 'uniform_account':
+                m = flag_uniform_account(df)
+            elif rule == 'unbalanced_set':
+                m = flag_unbalanced_set(df)
             else:
                 m = pd.Series(False, index=df.index)
             for idx in m[m].index:

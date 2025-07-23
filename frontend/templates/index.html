@@ -101,12 +101,16 @@
            <div id="rule-cards" class="space-y-2 mb-2"></div>
            <div class="flex items-center gap-2 mb-2">
              <select id="condition-select" class="border px-1 py-1 rounded">
-               <option value="weekend_txn">주말·공휴일 거래</option>
-               <option value="amount_over">금액 조건</option>
-               <option value="keyword_search">특정 키워드</option>
-             </select>
-             <button id="add-condition-btn">➕ 조건 추가</button>
-             <button id="add-group-btn">➕ 조건 그룹 추가</button>
+             <option value="weekend_txn">주말·공휴일 거래</option>
+             <option value="amount_over">금액 조건</option>
+             <option value="keyword_search">특정 키워드</option>
+             <option value="party_freq">거래처별 거래 횟수</option>
+             <option value="round_million">백만단위 이하 모두 0</option>
+             <option value="uniform_account">동일 계정 전표세트</option>
+             <option value="unbalanced_set">차/대변 불일치 세트</option>
+            </select>
+             <button id="add-condition-btn" class="border px-2 py-1 rounded">조건 추가</button>
+             <button id="add-group-btn" class="border px-2 py-1 rounded">조건 그룹 추가</button>
            </div>
            <div id="logic-tree" class="mt-2 space-y-2"></div>
       </div>
