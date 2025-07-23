@@ -6,7 +6,11 @@ let nextId = 1;
 const ruleTitles = {
   weekend_txn: '주말·공휴일 거래',
   amount_over: '금액 조건',
-  keyword_search: '특정 키워드'
+  keyword_search: '특정 키워드',
+  party_freq: '거래처별 거래 횟수',
+  round_million: '백만단위 이하 모두 0',
+  uniform_account: '동일 계정 전표세트',
+  unbalanced_set: '차/대변 불일치 세트'
 };
 function newGroup(){ return { id: nextId++, type:'group', op:'AND', items:[] }; }
 function newCond(rule){
@@ -17,6 +21,9 @@ function newCond(rule){
     cond.value = tmpl.value;
     cond.target = tmpl.target;
   }else if(tmpl.type==='input'){
+    cond.value = tmpl.value;
+  }else if(tmpl.type==='count'){
+    cond.op = tmpl.op;
     cond.value = tmpl.value;
   }
   return cond;
@@ -32,6 +39,14 @@ function genRule(id){
       return { id, name:'금액 조건', type:'amount', op:'>', value:0, target:'debit', enabled:true };
     case 'keyword_search':
       return { id, name:'특정 키워드', type:'input', value:'', enabled:true };
+    case 'party_freq':
+      return { id, name:'거래처별 거래 횟수', type:'count', op:'>=', value:0, enabled:true };
+    case 'round_million':
+      return { id, name:'백만단위 이하 모두 0', type:'boolean', enabled:true };
+    case 'uniform_account':
+      return { id, name:'동일 계정 전표세트', type:'boolean', enabled:true };
+    case 'unbalanced_set':
+      return { id, name:'차/대변 불일치 세트', type:'boolean', enabled:true };
     default: return null;
   }
 }
@@ -75,6 +90,17 @@ function renderRules(){
             ${['>','>=','==','<=','<'].map(op=>`<option ${op===r.op?'selected':''}>${op}</option>`).join('')}
           </select>
           <input type="number" class="border rounded w-24 px-1 py-0.5 text-sm"
+                 value="${r.value}"
+                 oninput="rules[${i}].value=parseFloat(this.value||0)">
+        </div>`;
+    }else if(r.type==='count'){
+      body+=`
+        <div class="flex items-center gap-2 mt-1" onclick="event.stopPropagation();">
+          <select class="border rounded px-1 py-0.5 text-sm"
+                  onchange="rules[${i}].op=this.value">
+            ${['>','>=','==','<=','<'].map(op=>`<option ${op===r.op?'selected':''}>${op}</option>`).join('')}
+          </select>
+          <input type="number" class="border rounded w-20 px-1 py-0.5 text-sm"
                  value="${r.value}"
                  oninput="rules[${i}].value=parseFloat(this.value||0)">
         </div>`;
@@ -201,6 +227,21 @@ function renderItem(item){
     d.appendChild(dcSel);
     d.appendChild(sel);
     d.appendChild(inp);
+  }else if(item.rule==='party_freq'){
+    const sel=document.createElement('select');
+    ['>','>=','==','<=','<'].forEach(op=>{
+      const o=document.createElement('option');
+      o.value=op; o.textContent=op; if(item.op===op) o.selected=true;
+      sel.appendChild(o);
+    });
+    sel.onchange=()=>{ item.op=sel.value; };
+    const inp=document.createElement('input');
+    inp.type='number';
+    inp.className='border rounded w-20 px-1 py-0.5 text-xs';
+    inp.value=item.value;
+    inp.oninput=()=>{ item.value=parseFloat(inp.value||0); };
+    d.appendChild(sel);
+    d.appendChild(inp);
   }else if(item.rule==='keyword_search'){
     const inp=document.createElement('input');
     inp.type='text';
@@ -252,6 +293,8 @@ function collectValues(tree,vals={}){
       if(it.rule==='keyword_search') vals[it.rule]=it.value;
       else if(it.rule==='amount_over')
         vals[it.rule]={op:it.op,value:it.value,target:it.target};
+      else if(it.rule==='party_freq')
+        vals[it.rule]={op:it.op,value:it.value};
     }else if(it.type==='group') collectValues(it,vals);
   }
   return vals;
