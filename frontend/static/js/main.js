@@ -25,6 +25,9 @@ function newCond(rule){
   }else if(tmpl.type==='count'){
     cond.op = tmpl.op;
     cond.value = tmpl.value;
+  }else if(tmpl.type==='keyword'){
+    cond.value = tmpl.value;
+    cond.mode  = tmpl.mode;
   }
   return cond;
 }
@@ -38,7 +41,7 @@ function genRule(id){
     case 'amount_over':
       return { id, name:'금액 조건', type:'amount', op:'>', value:0, target:'debit', enabled:true };
     case 'keyword_search':
-      return { id, name:'특정 키워드', type:'input', value:'', enabled:true };
+      return { id, name:'특정 키워드', type:'keyword', mode:'include', value:'', enabled:true };
     case 'party_freq':
       return { id, name:'거래처별 거래 횟수', type:'count', op:'>=', value:0, enabled:true };
     case 'round_million':
@@ -80,7 +83,7 @@ function renderRules(){
 
     /* 본문(타이틀 + 컨트롤) */
     let body=`<div class="flex-1">
-                <h4 class="font-medium">${r.name}</h4>`;
+                <h4 class="font-medium whitespace-nowrap">${r.name}</h4>`;
     // 입력/연산자 컨트롤
     if(r.type==='amount'){
       body+=`
@@ -110,6 +113,17 @@ function renderRules(){
                value="${r.value}"
                onclick="event.stopPropagation();"
                oninput="rules[${i}].value=this.value">`;
+    }else if(r.type==='keyword'){
+      body+=`
+        <div class="flex items-center gap-2 mt-1" onclick="event.stopPropagation();">
+          <select class="border rounded px-1 py-0.5 text-sm"
+                  onchange="rules[${i}].mode=this.value">
+            ${['include','exclude'].map(m=>`<option ${m===r.mode?'selected':''} value="${m}">${m==='include'?'포함':'제외'}</option>`).join('')}
+          </select>
+          <input type="text" class="border rounded w-32 px-1 py-0.5 text-sm"
+                 value="${r.value}"
+                 oninput="rules[${i}].value=this.value">
+        </div>`;
     }
     body+='</div>';
 
@@ -141,6 +155,13 @@ document.getElementById('add-group-btn').onclick = () => {
   renderTree();
 };
 
+function createDragHandle(){
+  const span=document.createElement('span');
+  span.textContent='\u2630';
+  span.className='cursor-move select-none';
+  return span;
+}
+
 function renderTree(){
   $logicTree.innerHTML='';
   $logicTree.appendChild(renderGroup(logicTree));
@@ -154,6 +175,9 @@ function renderGroup(g){
   // header
   const header=document.createElement('div');
   header.className='flex items-center gap-2 mb-1';
+  if(g!==logicTree){
+    header.appendChild(createDragHandle());
+  }
   const sel=document.createElement('select');
   ['AND','OR'].forEach(op=>{
     const o=document.createElement('option');
@@ -199,6 +223,8 @@ function renderItem(item){
   d.className='border rounded px-2 py-1 flex items-center gap-2';
   d.dataset.itemId=item.id;
 
+  d.appendChild(createDragHandle());
+
   const label=document.createElement('span');
   label.textContent=ruleTitles[item.rule]||item.rule;
   d.appendChild(label);
@@ -243,11 +269,20 @@ function renderItem(item){
     d.appendChild(sel);
     d.appendChild(inp);
   }else if(item.rule==='keyword_search'){
+    const modeSel=document.createElement('select');
+    [['include','포함'],['exclude','제외']].forEach(([v,t])=>{
+      const o=document.createElement('option');
+      o.value=v; o.textContent=t; if(item.mode===v) o.selected=true;
+      modeSel.appendChild(o);
+    });
+    modeSel.onchange=()=>{ item.mode=modeSel.value; };
+
     const inp=document.createElement('input');
     inp.type='text';
-    inp.className='border rounded px-1 py-0.5 text-xs flex-1';
+    inp.className='border rounded w-28 px-1 py-0.5 text-xs';
     inp.value=item.value||'';
     inp.oninput=()=>{ item.value=inp.value; };
+    d.appendChild(modeSel);
     d.appendChild(inp);
   }
 
@@ -290,7 +325,8 @@ function collectRuleIds(tree,set=new Set()){
 function collectValues(tree,vals={}){
   for(const it of tree.items){
     if(it.type==='cond'){
-      if(it.rule==='keyword_search') vals[it.rule]=it.value;
+      if(it.rule==='keyword_search')
+        vals[it.rule]={value:it.value, mode:it.mode};
       else if(it.rule==='amount_over')
         vals[it.rule]={op:it.op,value:it.value,target:it.target};
       else if(it.rule==='party_freq')

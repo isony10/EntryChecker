@@ -162,8 +162,12 @@ def analyze_journal(
 
         # 키워드 조건
         if 'keyword_search' in active_rules:
-            kw = rule_values.get('keyword_search', '')
+            cond = rule_values.get('keyword_search', {})
+            kw = cond.get('value', '') if isinstance(cond, dict) else cond
+            mode = cond.get('mode', 'include') if isinstance(cond, dict) else 'include'
             m = flag_keyword(df, kw)
+            if mode == 'exclude':
+                m = ~m
             rule_masks['keyword_search'] = m
             masks.append(m)
             for idx in m[m].index:
@@ -225,7 +229,10 @@ def analyze_journal(
                 m = flag_amount_over(df, op, thr, is_debit=(target != 'credit'))
             elif rule == 'keyword_search':
                 kw = node.get('value', '')
+                mode = node.get('mode', 'include')
                 m = flag_keyword(df, kw)
+                if mode == 'exclude':
+                    m = ~m
             elif rule == 'party_freq':
                 op = node.get('op', '>=')
                 thr = float(node.get('value', 0))
