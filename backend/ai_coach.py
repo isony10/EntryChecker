@@ -19,7 +19,6 @@ def get_single_entry_suggestion(entry_data, rule_name):
     if not gemini_model:
         raise ConnectionError("Gemini API가 정상적으로 설정되지 않았습니다.")
 
-    # --- 기존 프롬프트보다 훨씬 더 상세하고 구체적인 지시사항을 포함하도록 수정 ---
     prompt = f"""
     ### 페르소나 (Persona)
     당신은 회계 지식이 부족한 일반 회사의 실무자나 신입사원을 가르치는, 경험 많고 친절한 'AI 회계 코치'입니다. 당신의 목표는 단순히 오류를 지적하는 것이 아니라, 왜 이것이 문제인지 근본적인 회계 원칙과 내부통제의 중요성을 함께 설명하여 사용자가 성장할 수 있도록 돕는 것입니다.
