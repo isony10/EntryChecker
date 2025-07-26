@@ -3,145 +3,98 @@
 <head>
   <style>
   input[type="number"]::-webkit-inner-spin-button,
-  input[type="number"]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-
-  input[type="number"] {
-    -moz-appearance: textfield; /* Firefox */
-  }
-  .task-card{ @apply flex items-start px-3 py-2 rounded-lg border bg-white shadow-sm;}
-  .task-card-number{ @apply text-sm font-bold pr-2 select-none;}
-  .task-card-title { @apply font-semibold;}
-  .task-card-desc  { @apply text-xs text-gray-500 leading-none;}
-  .task-card-active{ @apply bg-indigo-50 border-indigo-400;}
-  .task-card button{ @apply ml-auto text-red-500 text-xs font-semibold;}
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; }
   </style>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>EntryChecker – 분개장 오류 식별 툴</title>
-
-  <!-- Tailwind CSS & Papaparse -->
+  <title>EntryChecker – AI 회계 코치</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-  <!-- SortableJS for drag and drop -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
-
-  <!-- Font Awesome (아이콘) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
-
   <style>
-    body       { font-family: 'Noto Sans KR', sans-serif; }
-    .highlight { background-color:#fff1f2 !important; color:#be123c; font-weight:600; }
-    .rule-card.active { background:#eff6ff; border-color:#3b82f6; }
-    .rule-card.active h4{ color:#1d4ed8; }
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    .highlight { background-color:#fff1f2 !important; }
+    .highlight .highlight-cell { color:#be123c; font-weight:600; }
+    .voucher-card { border-left: 4px solid #ef4444; }
+    .modal-backdrop { background-color: rgba(0,0,0,0.5); }
+    .modal-content { animation: slide-down 0.3s ease-out; }
+    @keyframes slide-down { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
 
-  <!-- ───────── 헤더 ───────── -->
   <header class="bg-white shadow-md">
     <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-
-      <!-- 왼쪽: 로고 & 업로드 세트 -->
       <div class="flex items-center space-x-3">
-
-        <!-- 업로드 버튼 -->
-        <label for="file-upload"
-               class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-lg cursor-pointer flex items-center">
+        <label for="file-upload" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-lg cursor-pointer flex items-center">
           <i class="fas fa-file-upload mr-1"></i> 분개장 불러오기
         </label>
         <input type="file" id="file-upload" class="hidden" accept=".csv,.xls,.xlsx">
       </div>
-
-        <!-- 로딩 배지 -->
-        <span id="loading" class="hidden text-sm font-semibold text-blue-600">
-          분석중… ⏳
-        </span>
-
-      <!-- 분석 실행 버튼 -->
-      <button id="run-analysis"
-              class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg flex items-center">
-        <i class="fas fa-play mr-1"></i> 분석 실행
-      </button>
+      <span id="loading" class="hidden text-sm font-semibold text-blue-600">분석중… ⏳</span>
+      <!-- --- 분석 버튼 그룹 수정 --- -->
+      <div class="flex items-center space-x-2">
+        <button id="run-analysis" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg flex items-center" title="설정한 규칙에 따라 개별 분개를 검토합니다.">
+          <i class="fas fa-tasks mr-1"></i> 규칙 기반 분석
+        </button>
+        <button id="run-ai-voucher-analysis" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center" title="AI가 전표 단위로 종합적인 오류를 분석합니다.">
+          <i class="fas fa-robot mr-1"></i> AI 전표세트 분석
+        </button>
+      </div>
     </div>
   </header>
 
-  <!-- ───────── 메인 ───────── -->
   <main class="flex-grow flex p-4 gap-4 max-w-7xl mx-auto w-full">
-
-    <!-- 좌측 패널 -->
     <aside class="w-1/3 flex flex-col gap-4 flex-shrink-0 min-h-0">
-
-      <!-- 오류 조건 카드 -->
       <div class="bg-white p-4 rounded-lg shadow space-y-3">
-        <h3 class="text-lg font-bold">분개장 분석기</h3>
-        <p class="text-sm text-gray-500">조건과 그룹을 추가하여 사용하세요.
-          <br>드래그 해서 조건과 그룹을 이동할 수 있습니다.
-        </p>
-
-        <!-- 전표세트 강조 체크박스 및 일치 분개만 보기 -->
-        <label class="inline-flex items-center text-sm font-medium">
-          <input type="checkbox" id="chk-whole-voucher" class="mr-1">
-          전표세트 전체 강조
-        </label>
-        <label class="inline-flex items-center text-sm font-medium ml-4">
-          <input type="checkbox" id="chk-show-matching-only" class="mr-1">
-          일치하는 분개만 보이기
-        </label>
-
+        <h3 class="text-lg font-bold">규칙 기반 분석 조건</h3>
+        <p class="text-sm text-gray-500">조건과 그룹을 추가하고 드래그하여 논리를 구성하세요.</p>
+        <label class="inline-flex items-center text-sm font-medium"><input type="checkbox" id="chk-whole-voucher" class="mr-1"> 전표세트 전체 강조</label>
+        <label class="inline-flex items-center text-sm font-medium ml-4"><input type="checkbox" id="chk-show-matching-only" class="mr-1"> 일치하는 분개만 보이기</label>
       </div>
-
-
-      
-      <!-- 규칙 카드 리스트 -->
-      <div id="rule-list"
-           class="h-full bg-white p-4 rounded-lg shadow overflow-y-auto space-y-3">
-           <div id="rule-cards" class="space-y-2 mb-2"></div>
-           <div class="flex items-center gap-2 mb-2">
-             <select id="condition-select" class="border px-1 py-1 rounded">
-             <option value="weekend_txn">주말·공휴일 거래</option>
-             <option value="amount_over">금액 조건</option>
-             <option value="keyword_search">특정 키워드</option>
-             <option value="party_freq">거래처별 거래 횟수</option>
-             <option value="round_million">백만단위 이하 모두 0</option>
-             <option value="uniform_account">동일 계정 전표세트</option>
-             <option value="unbalanced_set">차/대변 불일치 세트</option>
-            </select>
-             <button id="add-condition-btn" class="border px-2 py-1 rounded">조건 추가</button>
-             <button id="add-group-btn" class="border px-2 py-1 rounded">조건 그룹 추가</button>
-           </div>
-           <div id="logic-tree" class="mt-2 space-y-2"></div>
-      </div>
-
-
-    </aside>
-
-
-
-    <!-- 우측 패널 -->
-    <section class="w-2/3 flex flex-col gap-4">
-
-    <!-- 로그 -->
-    <div class="h-32 bg-gray-800 text-white text-sm font-mono p-3 rounded-lg overflow-auto">
-    <p class="text-green-400 font-bold">> 분석 로그</p>
-    <div id="log-content"></div>
-    </div>
-
-      <!-- 분개장 테이블 -->
-      <div id="journal-display" class="flex-grow bg-white p-4 rounded-lg shadow overflow-auto">
-        <div id="table-container"
-             class="w-full h-full flex items-center justify-center text-gray-400">
-          <p>분개장 파일을 불러오면 여기 표로 표시됩니다.</p>
+      <div id="rule-list" class="h-full bg-white p-4 rounded-lg shadow overflow-y-auto space-y-3">
+        <div class="flex items-center gap-2 mb-2">
+          <select id="condition-select" class="border px-1 py-1 rounded w-full">
+            <option value="weekend_txn">주말·공휴일 거래</option>
+            <option value="amount_over">금액 조건</option>
+            <option value="keyword_search">특정 키워드</option>
+            <option value="party_freq">거래처별 거래 횟수</option>
+            <option value="round_million">백만단위 이하 0</option>
+            <option value="uniform_account">동일 계정 전표세트</option>
+            <option value="unbalanced_set">차/대변 불일치 세트</option>
+          </select>
+          <button id="add-condition-btn" class="border px-2 py-1 rounded flex-shrink-0">조건 추가</button>
         </div>
+        <button id="add-group-btn" class="border px-2 py-1 rounded w-full">조건 그룹 추가</button>
+        <div id="logic-tree" class="mt-2 space-y-2"></div>
       </div>
-
-
+    </aside>
+    <section class="w-2/3 flex flex-col gap-4">
+      <div class="h-32 bg-gray-800 text-white text-sm font-mono p-3 rounded-lg overflow-auto">
+        <p class="text-green-400 font-bold">> 분석 로그</p>
+        <div id="log-content"></div>
+      </div>
+      <!-- --- 분석 결과 표시 영역 수정 --- -->
+      <div id="display-area" class="flex-grow bg-white p-4 rounded-lg shadow overflow-auto">
+        <div id="table-container" class="w-full h-full flex items-center justify-center text-gray-400"><p>분개장 파일을 불러오고 분석 버튼을 눌러주세요.</p></div>
+        <div id="ai-voucher-results-container" class="hidden space-y-6"></div>
+      </div>
     </section>
   </main>
 
-  <!-- ───────── 스크립트 ───────── -->
+  <!-- --- 개별 AI 분석 모달창 추가 --- -->
+  <div id="ai-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-backdrop">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl modal-content">
+        <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+            <h3 class="text-xl font-bold text-gray-800 flex items-center"><i class="fas fa-user-md text-blue-500 mr-3"></i>AI 코치의 개별 진단</h3>
+            <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+        <div id="modal-body" class="p-6"></div>
+    </div>
+  </div>
+
   <script src="/static/js/main.js"></script>
 </body>
 </html>
