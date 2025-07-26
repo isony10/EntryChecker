@@ -78,13 +78,13 @@ def flag_keyword(df, keywords):
 
 def flag_party_freq(df, op, thr):
     """전표세트 기준 거래 횟수 조건."""
-    if '거래처' not in df.columns:
+    if '거래처코드' not in df.columns:
         return pd.Series(False, index=df.index)
 
-    tmp = df[['거래처', '전표일자', '전표번호']].dropna(subset=['거래처'])
+    tmp = df[['거래처코드', '전표일자', '전표번호']].dropna(subset=['거래처코드'])
     sets = tmp.drop_duplicates()
-    counts = sets.groupby('거래처').size()
-    freq = df['거래처'].map(counts).fillna(0)
+    counts = sets.groupby('거래처코드').size()
+    freq = df['거래처코드'].map(counts).fillna(0)
 
     if   op == '>':  return freq >  thr
     elif op == '>=': return freq >= thr
