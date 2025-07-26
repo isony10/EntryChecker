@@ -2,7 +2,6 @@
 <html lang="ko">
 <head>
   <style>
-  /* 숫자 입력 필드의 스핀 버튼 숨기기 */
   input[type="number"]::-webkit-inner-spin-button,
   input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   input[type="number"] { -moz-appearance: textfield; }
@@ -15,26 +14,14 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <style>
-    /* 기본 폰트 설정 */
     body { font-family: 'Noto Sans KR', sans-serif; }
-    /* 하이라이트 스타일 */
     .highlight { background-color:#fff1f2 !important; }
     .highlight .highlight-cell { color:#be123c; font-weight:600; }
-    /* AI 분석 결과 카드 스타일 */
     .voucher-card { border-left: 4px solid #ef4444; }
-    /* 모달 배경 및 애니메이션 */
     .modal-backdrop { background-color: rgba(0,0,0,0.5); }
     .modal-content { animation: slide-down 0.3s ease-out; }
     @keyframes slide-down { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-    /* 로딩 스피너 */
-    .loader {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #3498db;
-        border-radius: 50%;
-        width: 30px;
-        height: 30px;
-        animation: spin 1s linear infinite;
-    }
+    .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
 </head>
@@ -49,12 +36,10 @@
         <input type="file" id="file-upload" class="hidden" accept=".csv,.xls,.xlsx">
         <span id="file-name" class="text-sm text-gray-600">선택된 파일 없음</span>
       </div>
-      <!-- 로딩 인디케이터 -->
       <div id="loading" class="hidden flex items-center space-x-2 text-sm font-semibold text-blue-600">
           <div class="loader"></div>
           <span>분석중...</span>
       </div>
-      <!-- 분석 버튼 그룹 -->
       <div class="flex items-center space-x-2">
         <button id="run-analysis" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg flex items-center transition-colors" title="설정한 규칙에 따라 개별 분개를 검토합니다.">
           <i class="fas fa-tasks mr-2"></i> 규칙 기반 분석
@@ -67,7 +52,6 @@
   </header>
 
   <main class="flex-grow flex p-4 gap-4 max-w-7xl mx-auto w-full">
-    <!-- 왼쪽 사이드바: 규칙 설정 -->
     <aside class="w-1/3 flex flex-col gap-4 flex-shrink-0 min-h-0">
       <div class="bg-white p-4 rounded-lg shadow space-y-3">
         <h3 class="text-lg font-bold">규칙 기반 분석 조건</h3>
@@ -92,13 +76,11 @@
         <div id="logic-tree" class="mt-2 space-y-2"></div>
       </div>
     </aside>
-    <!-- 오른쪽 메인 섹션: 결과 표시 -->
     <section class="w-2/3 flex flex-col gap-4">
       <div class="h-32 bg-gray-800 text-white text-sm font-mono p-3 rounded-lg overflow-auto">
         <p class="text-green-400 font-bold">> 분석 로그</p>
         <div id="log-content"></div>
       </div>
-      <!-- 분석 결과 표시 영역 -->
       <div id="display-area" class="flex-grow bg-white p-4 rounded-lg shadow overflow-auto">
         <div id="table-container" class="w-full h-full flex items-center justify-center text-gray-400"><p>분개장 파일을 불러오고 분석 버튼을 눌러주세요.</p></div>
         <div id="ai-voucher-results-container" class="hidden space-y-6"></div>
@@ -106,20 +88,16 @@
     </section>
   </main>
 
-  <!-- 개별 AI 분석 모달창 -->
   <div id="ai-modal" class="fixed inset-0 z-50 hidden items-center justify-center modal-backdrop">
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl modal-content">
         <div class="p-6 border-b border-gray-200 flex justify-between items-center">
             <h3 class="text-xl font-bold text-gray-800 flex items-center"><i class="fas fa-user-md text-blue-500 mr-3"></i>AI 코치의 개별 진단</h3>
             <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
-        <div id="modal-body" class="p-6 space-y-4">
-            <!-- AI 코칭 내용이 여기에 동적으로 삽입됩니다. -->
-        </div>
+        <div id="modal-body" class="p-6 space-y-4"></div>
     </div>
   </div>
 
   <script src="/static/js/main.js"></script>
 </body>
 </html>
-
