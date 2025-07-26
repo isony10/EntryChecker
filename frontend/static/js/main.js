@@ -119,11 +119,30 @@ function collectValues(tree, vals = {}) { for (const it of tree.items) { if (it.
 function logMsg(msg, type = 'info') { const p = document.createElement('p'); p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`; if (type === 'error') p.classList.add('text-red-400'); if (type === 'success') p.classList.add('text-green-400'); $log.prepend(p); }
 function showLoading(show) { $loading.classList.toggle('hidden', !show); $loading.classList.toggle('flex', show); }
 
+function adjustColumnWidths(tbl) {
+  const rows = Array.from(tbl.rows);
+  if (!rows.length) return;
+  const colCount = rows[0].cells.length;
+  const max = Array(colCount).fill(0);
+  rows.forEach(r => {
+    Array.from(r.cells).forEach((c, i) => {
+      const w = c.scrollWidth;
+      if (w > max[i]) max[i] = w;
+    });
+  });
+  rows.forEach(r => {
+    Array.from(r.cells).forEach((c, i) => {
+      c.style.minWidth = max[i] + 'px';
+      c.style.whiteSpace = 'nowrap';
+    });
+  });
+}
+
 function renderTable(rows, hi = new Set(), ruleMap = {}) {
   $aiVoucherResults.classList.add('hidden');
   $tableWrap.classList.remove('hidden');
   if (!rows.length) { $tableWrap.innerHTML = '<p class="text-gray-500">표시할 데이터가 없습니다.</p>'; return; }
-  const tbl = document.createElement('table'); tbl.className = 'w-full text-sm text-left border-collapse';
+  const tbl = document.createElement('table'); tbl.className = 'text-sm text-left border-collapse';
   const headers = [...dataHeaders, 'AI 코칭'];
   const head = `<thead class="bg-gray-100"><tr>${headers.map(h => `<th class="p-2 border-b font-semibold whitespace-nowrap">${h}</th>`).join('')}</tr></thead>`;
   const body = `<tbody>${rows.map((row, idx) => {
@@ -136,7 +155,7 @@ function renderTable(rows, hi = new Set(), ruleMap = {}) {
     return `<tr class="border-b hover:bg-gray-50 ${cls}">${dataHeaders.map(c => `<td class="p-2 whitespace-nowrap">${row[c] ?? ''}</td>`).join('')}<td class="p-2 text-center whitespace-nowrap">${coachButton}</td></tr>`;
   }).join('')}</tbody>`;
   tbl.innerHTML = head + body;
-  $tableWrap.innerHTML = ''; $tableWrap.appendChild(tbl);
+  $tableWrap.innerHTML = ''; $tableWrap.appendChild(tbl); adjustColumnWidths(tbl);
 }
 
 function renderAiVoucherResults(results) {
