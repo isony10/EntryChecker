@@ -141,8 +141,16 @@ function adjustColumnWidths(tbl) {
 function renderTable(rows, hi = new Set(), ruleMap = {}) {
   $aiVoucherResults.classList.add('hidden');
   $tableWrap.classList.remove('hidden');
-  if (!rows.length) { $tableWrap.innerHTML = '<p class="text-gray-500">표시할 데이터가 없습니다.</p>'; return; }
-  const tbl = document.createElement('table'); tbl.className = 'text-sm text-left border-collapse';
+  // Ensure the table container aligns to the start when displaying data
+  $tableWrap.classList.remove('items-center', 'justify-center', 'flex');
+  $tableWrap.classList.add('block');
+  if (!rows.length) {
+    // Revert to centered layout when showing the empty message
+    $tableWrap.classList.remove('block');
+    $tableWrap.classList.add('flex', 'items-center', 'justify-center');
+    $tableWrap.innerHTML = '<p class="text-gray-500">표시할 데이터가 없습니다.</p>';
+    return;
+  }  const tbl = document.createElement('table'); tbl.className = 'text-sm text-left border-collapse';
   const headers = [...dataHeaders, 'AI 코칭'];
   const head = `<thead class="bg-gray-100"><tr>${headers.map(h => `<th class="p-2 border-b font-semibold whitespace-nowrap">${h}</th>`).join('')}</tr></thead>`;
   const body = `<tbody>${rows.map((row, idx) => {
