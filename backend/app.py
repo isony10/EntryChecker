@@ -43,6 +43,20 @@ def read_file_to_df(file):
         return pd.read_excel(file, engine='openpyxl')
     else:
         raise ValueError("지원하지 않는 파일 형식입니다. CSV 또는 Excel 파일을 업로드해주세요.")
+@app.route('/preview', methods=['POST'])
+def preview():
+    if 'file' not in request.files:
+        return jsonify({'error': '파일이 없습니다.'}), 400
+    file = request.files['file']
+    try:
+        df = read_file_to_df(file)
+        headers = df.columns.tolist()
+        rows = df.to_dict(orient='records')
+        result = {'headers': headers, 'rows': rows}
+        cleaned = clean_nan(result)
+        return Response(json.dumps(cleaned, ensure_ascii=False), mimetype='application/json')
+    except Exception as e:
+        return jsonify({'error': f'파일 파싱 오류: {str(e)}'}), 400
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
