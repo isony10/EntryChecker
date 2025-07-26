@@ -1,6 +1,6 @@
-/* ===== EntryChecker main.js – 2025-07-20 ===== */
+/* ===== EntryChecker main.js – 2025-07-26 (AI 기능 추가) ===== */
 
-/* ───────── 1. 규칙 정의 & 헬퍼 ───────── */
+/* ───────── 1. 전역 변수 및 규칙 정의 ───────── */
 let logicTree = { id: 0, type: 'group', op: 'AND', items: [] };
 let nextId = 1;
 const ruleTitles = {
@@ -12,440 +12,515 @@ const ruleTitles = {
   uniform_account: '동일 계정 전표세트',
   unbalanced_set: '차/대변 불일치 세트'
 };
-function newGroup(){ return { id: nextId++, type:'group', op:'AND', items:[] }; }
-function newCond(rule){
-  const tmpl = genRule(rule) || {};
-  const cond = { id: nextId++, type:'cond', rule };
-  if(tmpl.type==='amount'){
-    cond.op = tmpl.op;
-    cond.value = tmpl.value;
-    cond.target = tmpl.target;
-  }else if(tmpl.type==='input'){
-    cond.value = tmpl.value;
-  }else if(tmpl.type==='count'){
-    cond.op = tmpl.op;
-    cond.value = tmpl.value;
-  }else if(tmpl.type==='keyword'){
-    cond.value = tmpl.value;
-    cond.mode  = tmpl.mode;
+
+// 데이터 저장용
+let dataHeaders = [], journalData = [], originalJournalData = [];
+
+/* ───────── 2. DOM 요소 캐싱 ───────── */
+const $file = document.getElementById('file-upload');
+const $fileName = document.getElementById('file-name');
+const $runAnalysis = document.getElementById('run-analysis');
+const $runAiVoucherAnalysis = document.getElementById('run-ai-voucher-analysis');
+const $logicTree = document.getElementById('logic-tree');
+const $log = document.getElementById('log-content');
+const $tableContainer = document.getElementById('table-container');
+const $aiVoucherResultsContainer = document.getElementById('ai-voucher-results-container');
+const $chkSet = document.getElementById('chk-whole-voucher');
+const $chkOnly = document.getElementById('chk-show-matching-only');
+const $loading = document.getElementById('loading');
+const $modal = document.getElementById('ai-modal');
+const $modalBody = document.getElementById('modal-body');
+const $closeModalBtn = document.getElementById('close-modal-btn');
+
+/* ───────── 3. 로직 트리 UI 생성 및 관리 ───────── */
+function newGroup() { return { id: nextId++, type: 'group', op: 'AND', items: [] }; }
+function newCond(rule) {
+  const cond = { id: nextId++, type: 'cond', rule };
+  switch (rule) {
+    case 'amount_over':
+      cond.op = '>'; cond.value = 0; cond.target = 'debit'; break;
+    case 'party_freq':
+      cond.op = '>='; cond.value = 0; break;
+    case 'keyword_search':
+      cond.value = ''; cond.mode = 'include'; break;
   }
   return cond;
 }
-const rules = [];
 
-/* id → 새 규칙 템플릿 */
-function genRule(id){
-  switch(id){
-    case 'weekend_txn':
-      return { id, name:'주말·공휴일 거래', type:'boolean', enabled:true };
-    case 'amount_over':
-      return { id, name:'금액 조건', type:'amount', op:'>', value:0, target:'debit', enabled:true };
-    case 'keyword_search':
-      return { id, name:'특정 키워드', type:'keyword', mode:'include', value:'', enabled:true };
-    case 'party_freq':
-      return { id, name:'거래처별 거래 횟수', type:'count', op:'>=', value:0, enabled:true };
-    case 'round_million':
-      return { id, name:'백만단위 이하 모두 0', type:'boolean', enabled:true };
-    case 'uniform_account':
-      return { id, name:'동일 계정 전표세트', type:'boolean', enabled:true };
-    case 'unbalanced_set':
-      return { id, name:'차/대변 불일치 세트', type:'boolean', enabled:true };
-    default: return null;
-  }
-}
-
-/* ───────── 2. DOM 캐싱 ───────── */
-const $file      = document.getElementById('file-upload');
-const $run       = document.getElementById('run-analysis');
-const $ruleList  = document.getElementById('rule-list');
-const $ruleCards = document.getElementById('rule-cards');
-const $logicTree = document.getElementById('logic-tree');
-const $log       = document.getElementById('log-content');
-const $tableWrap = document.getElementById('table-container');
-const $chkSet    = document.getElementById('chk-whole-voucher');
-const $chkOnly   = document.getElementById('chk-show-matching-only');
-const $loading   = document.getElementById('loading');
-
-/* ───────── 3. UI – 규칙 카드 렌더 ───────── */
-function renderRules(){
-  $ruleCards.innerHTML='';
-  rules.forEach((r,i)=>{
-    const card=document.createElement('div');
-    card.className=`border p-3 rounded-lg mb-2 flex items-start gap-2 cursor-pointer
-                    ${r.enabled?'bg-blue-50 border-blue-400':'bg-white'}`
-    card.onclick=e=>{
-      // 클릭이 카드 내부 컨트롤이 아니라면 토글
-      if(!['INPUT','SELECT','BUTTON'].includes(e.target.tagName)){ r.enabled=!r.enabled; renderRules(); }
-    };
-
-    /* 좌측 활성 아이콘 */
-    const bullet=`<span class="mt-1 text-sm w-4">${r.enabled?'🟢':'⚪'}</span>`;
-
-    /* 본문(타이틀 + 컨트롤) */
-    let body=`<div class="flex-1">
-                <h4 class="font-medium whitespace-nowrap">${r.name}</h4>`;
-    // 입력/연산자 컨트롤
-    if(r.type==='amount'){
-      body+=`
-        <div class="flex items-center gap-2 mt-1" onclick="event.stopPropagation();">
-          <select class="border rounded px-1 py-0.5 text-sm"
-                  onchange="rules[${i}].op=this.value">
-            ${['>','>=','==','<=','<'].map(op=>`<option ${op===r.op?'selected':''}>${op}</option>`).join('')}
-          </select>
-          <input type="number" class="border rounded w-24 px-1 py-0.5 text-sm"
-                 value="${r.value}"
-                 oninput="rules[${i}].value=parseFloat(this.value||0)">
-        </div>`;
-    }else if(r.type==='count'){
-      body+=`
-        <div class="flex items-center gap-2 mt-1" onclick="event.stopPropagation();">
-          <select class="border rounded px-1 py-0.5 text-sm"
-                  onchange="rules[${i}].op=this.value">
-            ${['>','>=','==','<=','<'].map(op=>`<option ${op===r.op?'selected':''}>${op}</option>`).join('')}
-          </select>
-          <input type="number" class="border rounded w-20 px-1 py-0.5 text-sm"
-                 value="${r.value}"
-                 oninput="rules[${i}].value=parseFloat(this.value||0)">
-        </div>`;
-    }else if(r.type==='input'){
-      body+=`
-        <input type="text" class="border rounded w-full mt-1 px-1 py-0.5 text-sm"
-               value="${r.value}"
-               onclick="event.stopPropagation();"
-               oninput="rules[${i}].value=this.value">`;
-    }else if(r.type==='keyword'){
-      body+=`
-        <div class="flex items-center gap-2 mt-1" onclick="event.stopPropagation();">
-          <select class="border rounded px-1 py-0.5 text-sm"
-                  onchange="rules[${i}].mode=this.value">
-            ${['include','exclude'].map(m=>`<option ${m===r.mode?'selected':''} value="${m}">${m==='include'?'포함':'제외'}</option>`).join('')}
-          </select>
-          <input type="text" class="border rounded w-32 px-1 py-0.5 text-sm"
-                 value="${r.value}"
-                 oninput="rules[${i}].value=this.value">
-        </div>`;
-    }
-    body+='</div>';
-
-    /* 삭제 버튼 */
-    const del=`<button class="text-red-500 text-sm hover:underline"
-                     onclick="event.stopPropagation(); rules.splice(${i},1); renderRules();">
-                 삭제
-               </button>`;
-
-    card.innerHTML=bullet+body+del;
-    $ruleCards.appendChild(card);
-  });
-}
-
-/* 조건 추가 버튼 */
-const $btnAddCond = document.getElementById('add-condition-btn');
-if($btnAddCond){
-  $btnAddCond.onclick=()=>{
-    const selEl=document.getElementById('condition-select');
-    if(!selEl) return;
-    const sel=selEl.value;
-
-    logicTree.items.push(newCond(sel));
-    renderTree();
-  };
-}
-document.getElementById('add-group-btn').onclick = () => {
-  logicTree.items.push(newGroup());
-  renderTree();
-};
-
-function createDragHandle(){
-  const span=document.createElement('span');
-  span.textContent='\u2630';
-  span.className='cursor-move select-none';
-  return span;
-}
-
-function renderTree(){
-  $logicTree.innerHTML='';
+function renderTree() {
+  $logicTree.innerHTML = '';
   $logicTree.appendChild(renderGroup(logicTree));
 }
 
-function renderGroup(g){
-  const wrap=document.createElement('div');
-  wrap.className='border p-2 rounded';
-  wrap.dataset.groupId=g.id;
+function renderGroup(g) {
+  const wrap = document.createElement('div');
+  wrap.className = 'border p-2 rounded bg-gray-50';
+  wrap.dataset.groupId = g.id;
 
-  // header
-  const header=document.createElement('div');
-  header.className='flex items-center gap-2 mb-1';
-  if(g!==logicTree){
-    header.appendChild(createDragHandle());
+  const header = document.createElement('div');
+  header.className = 'flex items-center gap-2 mb-1';
+  if (g !== logicTree) {
+    const handle = document.createElement('span');
+    handle.textContent = '\u2630';
+    handle.className = 'cursor-move select-none text-gray-400';
+    header.appendChild(handle);
   }
-  const sel=document.createElement('select');
-  ['AND','OR'].forEach(op=>{
-    const o=document.createElement('option');
-    o.value=op; o.textContent=op; if(g.op===op) o.selected=true; sel.appendChild(o);
+  const sel = document.createElement('select');
+  sel.className = 'font-bold text-sm border-gray-300 rounded';
+  ['AND', 'OR'].forEach(op => {
+    const o = document.createElement('option');
+    o.value = op; o.textContent = op; if (g.op === op) o.selected = true; sel.appendChild(o);
   });
-  sel.onchange=()=>{ g.op=sel.value; };
-
+  sel.onchange = () => { g.op = sel.value; };
   header.appendChild(sel);
-  if(g!==logicTree){
-    const del=document.createElement('button');
-    del.textContent='삭제';
-    del.className='text-xs text-red-500';
-    del.onclick=()=>{ deleteItem(logicTree,g.id); renderTree(); };
+
+  if (g !== logicTree) {
+    const del = document.createElement('button');
+    del.innerHTML = '<i class="fas fa-trash-alt"></i>';
+    del.className = 'text-xs text-red-500 hover:text-red-700 ml-auto';
+    del.onclick = () => { deleteItem(logicTree, g.id); renderTree(); };
     header.appendChild(del);
   }
   wrap.appendChild(header);
 
-  const items=document.createElement('div');
-  items.className='pl-4 space-y-1';
-  items.dataset.groupId=g.id;
-  g.items.forEach(it=>items.appendChild(renderItem(it)));
+  const items = document.createElement('div');
+  items.className = 'pl-4 space-y-1';
+  items.dataset.groupId = g.id;
+  g.items.forEach(it => items.appendChild(renderItem(it)));
   wrap.appendChild(items);
 
-  new Sortable(items,{
-    group:'nested',
-    animation:150,
-    filter:'input,select,textarea',
-    preventOnFilter:false,
-    onEnd:evt=>{
-      const from=findGroupById(logicTree, parseInt(evt.from.dataset.groupId));
-      const to=findGroupById(logicTree, parseInt(evt.to.dataset.groupId));
-      const [moved]=from.items.splice(evt.oldIndex,1);
-      to.items.splice(evt.newIndex,0,moved);
+  new Sortable(items, {
+    group: 'nested', animation: 150, filter: 'input,select,textarea', preventOnFilter: false,
+    onEnd: evt => {
+      const from = findGroupById(logicTree, parseInt(evt.from.dataset.groupId));
+      const to = findGroupById(logicTree, parseInt(evt.to.dataset.groupId));
+      const [moved] = from.items.splice(evt.oldIndex, 1);
+      to.items.splice(evt.newIndex, 0, moved);
     }
   });
-
   return wrap;
 }
 
-function renderItem(item){
-  if(item.type==='group') return renderGroup(item);
-  const d=document.createElement('div');
-  d.className='border rounded px-2 py-1 flex items-center gap-2';
-  d.dataset.itemId=item.id;
+function renderItem(item) {
+  if (item.type === 'group') return renderGroup(item);
+  const d = document.createElement('div');
+  d.className = 'border rounded px-2 py-1 flex items-center gap-2 bg-white';
+  d.dataset.itemId = item.id;
 
-  d.appendChild(createDragHandle());
+  const handle = document.createElement('span');
+  handle.textContent = '\u2630';
+  handle.className = 'cursor-move select-none text-gray-400';
+  d.appendChild(handle);
 
-  const label=document.createElement('span');
-  label.textContent=ruleTitles[item.rule]||item.rule;
+  const label = document.createElement('span');
+  label.textContent = ruleTitles[item.rule] || item.rule;
+  label.className = 'text-sm flex-grow';
   d.appendChild(label);
 
-  if(item.rule==='amount_over'){
-    const dcSel=document.createElement('select');
-    [['debit','차변'],['credit','대변']].forEach(([v,t])=>{
-      const o=document.createElement('option');
-      o.value=v; o.textContent=t; if(item.target===v) o.selected=true;
-      dcSel.appendChild(o);
-    });
-    dcSel.onchange=()=>{ item.target=dcSel.value; };
-
-    const sel=document.createElement('select');
-    ['>','>=','==','<=','<'].forEach(op=>{
-      const o=document.createElement('option');
-      o.value=op; o.textContent=op; if(item.op===op) o.selected=true;
+  if (item.rule === 'amount_over' || item.rule === 'party_freq') {
+    const sel = document.createElement('select');
+    sel.className = 'border rounded px-1 py-0.5 text-xs';
+    ['>', '>=', '==', '<=', '<'].forEach(op => {
+      const o = document.createElement('option');
+      o.value = op; o.textContent = op; if (item.op === op) o.selected = true;
       sel.appendChild(o);
     });
-    sel.onchange=()=>{ item.op=sel.value; };
-    const inp=document.createElement('input');
-    inp.type='number';
-    inp.className='border rounded w-20 px-1 py-0.5 text-xs';
-    inp.value=item.value;
-    inp.oninput=()=>{ item.value=parseFloat(inp.value||0); };
-    d.appendChild(dcSel);
+    sel.onchange = () => { item.op = sel.value; };
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.className = 'border rounded w-20 px-1 py-0.5 text-xs';
+    inp.value = item.value;
+    inp.oninput = () => { item.value = parseFloat(inp.value || 0); };
+    if (item.rule === 'amount_over') {
+        const dcSel = document.createElement('select');
+        dcSel.className = 'border rounded px-1 py-0.5 text-xs';
+        [['debit', '차변'], ['credit', '대변']].forEach(([v, t]) => {
+            const o = document.createElement('option');
+            o.value = v; o.textContent = t; if (item.target === v) o.selected = true;
+            dcSel.appendChild(o);
+        });
+        dcSel.onchange = () => { item.target = dcSel.value; };
+        d.appendChild(dcSel);
+    }
     d.appendChild(sel);
     d.appendChild(inp);
-  }else if(item.rule==='party_freq'){
-    const sel=document.createElement('select');
-    ['>','>=','==','<=','<'].forEach(op=>{
-      const o=document.createElement('option');
-      o.value=op; o.textContent=op; if(item.op===op) o.selected=true;
-      sel.appendChild(o);
-    });
-    sel.onchange=()=>{ item.op=sel.value; };
-    const inp=document.createElement('input');
-    inp.type='number';
-    inp.className='border rounded w-20 px-1 py-0.5 text-xs';
-    inp.value=item.value;
-    inp.oninput=()=>{ item.value=parseFloat(inp.value||0); };
-    d.appendChild(sel);
-    d.appendChild(inp);
-  }else if(item.rule==='keyword_search'){
-    const modeSel=document.createElement('select');
-    [['include','포함'],['exclude','제외']].forEach(([v,t])=>{
-      const o=document.createElement('option');
-      o.value=v; o.textContent=t; if(item.mode===v) o.selected=true;
+  } else if (item.rule === 'keyword_search') {
+    const modeSel = document.createElement('select');
+    modeSel.className = 'border rounded px-1 py-0.5 text-xs';
+    [['include', '포함'], ['exclude', '제외']].forEach(([v, t]) => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = t; if (item.mode === v) o.selected = true;
       modeSel.appendChild(o);
     });
-    modeSel.onchange=()=>{ item.mode=modeSel.value; };
-
-    const inp=document.createElement('input');
-    inp.type='text';
-    inp.className='border rounded w-28 px-1 py-0.5 text-xs';
-    inp.value=item.value||'';
-    inp.oninput=()=>{ item.value=inp.value; };
+    modeSel.onchange = () => { item.mode = modeSel.value; };
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'border rounded w-28 px-1 py-0.5 text-xs';
+    inp.value = item.value || '';
+    inp.oninput = () => { item.value = inp.value; };
     d.appendChild(modeSel);
     d.appendChild(inp);
   }
 
-  const del=document.createElement('button');
-  del.textContent='삭제';
-  del.className='text-xs text-red-500 ml-2';
-  del.onclick=()=>{ deleteItem(logicTree,item.id); renderTree(); };
+  const del = document.createElement('button');
+  del.innerHTML = '<i class="fas fa-trash-alt"></i>';
+  del.className = 'text-xs text-red-500 hover:text-red-700 ml-2';
+  del.onclick = () => { deleteItem(logicTree, item.id); renderTree(); };
   d.appendChild(del);
   return d;
 }
 
-function findGroupById(tree,id){
-  if(tree.id===id) return tree;
-  for(const it of tree.items){
-    if(it.type==='group'){
-      const r=findGroupById(it,id);
-      if(r) return r;
+function findGroupById(tree, id) {
+  if (tree.id === id) return tree;
+  for (const it of tree.items) {
+    if (it.type === 'group') {
+      const r = findGroupById(it, id);
+      if (r) return r;
     }
   }
   return null;
 }
 
-function deleteItem(tree,id){
-  for(let i=0;i<tree.items.length;i++){
-    const it=tree.items[i];
-    if(it.id===id){ tree.items.splice(i,1); return true; }
-    if(it.type==='group' && deleteItem(it,id)) return true;
-  }
-  return false;
+function deleteItem(tree, id) {
+  tree.items = tree.items.filter(it => {
+    if (it.id === id) return false;
+    if (it.type === 'group') deleteItem(it, id);
+    return true;
+  });
 }
 
-function collectRuleIds(tree,set=new Set()){
-  for(const it of tree.items){
-    if(it.type==='cond') set.add(it.rule);
-    else if(it.type==='group') collectRuleIds(it,set);
+function collectRuleIds(tree, set = new Set()) {
+  for (const it of tree.items) {
+    if (it.type === 'cond') set.add(it.rule);
+    else if (it.type === 'group') collectRuleIds(it, set);
   }
   return set;
 }
 
-function collectValues(tree,vals={}){
-  for(const it of tree.items){
-    if(it.type==='cond'){
-      if(it.rule==='keyword_search')
-        vals[it.rule]={value:it.value, mode:it.mode};
-      else if(it.rule==='amount_over')
-        vals[it.rule]={op:it.op,value:it.value,target:it.target};
-      else if(it.rule==='party_freq')
-        vals[it.rule]={op:it.op,value:it.value};
-    }else if(it.type==='group') collectValues(it,vals);
+function collectValues(tree, vals = {}) {
+  for (const it of tree.items) {
+    if (it.type === 'cond') {
+      if (it.rule === 'keyword_search') vals[it.rule] = { value: it.value, mode: it.mode };
+      else if (it.rule === 'amount_over') vals[it.rule] = { op: it.op, value: it.value, target: it.target };
+      else if (it.rule === 'party_freq') vals[it.rule] = { op: it.op, value: it.value };
+    } else if (it.type === 'group') collectValues(it, vals);
   }
   return vals;
 }
 
-/* ───────── 4. 로그 ───────── */
-function log(msg,type='info'){
-  const p=document.createElement('p');
-  p.textContent=`> ${msg}`;
-  if(type==='error')  p.classList.add('text-red-400');
-  if(type==='success')p.classList.add('text-green-400');
+/* ───────── 4. 유틸리티 함수 (로그, 로딩) ───────── */
+function logMsg(msg, type = 'info') {
+  const p = document.createElement('p');
+  p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  if (type === 'error') p.classList.add('text-red-400');
+  if (type === 'success') p.classList.add('text-green-400');
   $log.prepend(p);
 }
 
-/* ───────── 5. 테이블 렌더 ───────── */
-let dataHeaders=[], journalData=[];
-function renderTable(rows,hi=new Set(),ruleMap={}){
-  if(!rows.length){ $tableWrap.innerHTML='<p class="text-gray-500">표시할 데이터가 없습니다.</p>'; return; }
-
-  const tbl=document.createElement('table');
-  tbl.className='w-full text-sm text-left border';
-  const headers=dataHeaders.filter(h=>h!=='프로젝트코드');
-  const head=`<thead class="bg-gray-100">
-                <tr>${headers.map(h=>`<th class="p-2 border-b">${h}</th>`).join('')}</tr>
-              </thead>`;
-  const body=`<tbody>
-      ${rows.map((row,idx)=>{
-        const cls=hi.has(idx)?'highlight':'';
-        return `<tr class="border-b hover:bg-gray-50 ${cls}">
-                  ${headers.map(c=>`<td class="p-2">${row[c]??''}</td>`).join('')}
-                </tr>`;
-      }).join('')}
-    </tbody>`;
-  tbl.innerHTML=head+body;
-  $tableWrap.innerHTML=''; $tableWrap.appendChild(tbl);
+function showLoading(show) {
+  $loading.classList.toggle('hidden', !show);
 }
 
-/* ───────── 6. 파일 선택 ───────── */
-$file.onchange=e=>{
-  const f=e.target.files[0]; if(!f) return;
-  log(`파일 선택: ${f.name}`,'info');
+/* ───────── 5. 결과 렌더링 함수 ───────── */
+function renderTable(rows, hi = new Set(), ruleMap = {}) {
+  $aiVoucherResultsContainer.classList.add('hidden');
+  $tableContainer.classList.remove('hidden');
 
-  if(/\.(csv)$/i.test(f.name)){
-    Papa.parse(f,{
-      header:true,
-      complete:res=>{
-        journalData=res.data; dataHeaders=res.meta.fields;
-        renderTable(journalData); log('CSV 파싱 완료','success');
-      },
-      error:err=>log(`CSV 파싱 오류: ${err.message}`,'error')
+  if (!rows.length) {
+    $tableContainer.innerHTML = '<p class="text-gray-500">표시할 데이터가 없습니다.</p>';
+    return;
+  }
+
+  const tbl = document.createElement('table');
+  tbl.className = 'w-full text-sm text-left border-collapse';
+  const headers = [...dataHeaders, 'AI 코칭'];
+  const head = `<thead class="bg-gray-100"><tr>${headers.map(h => `<th class="p-2 border-b font-semibold">${h}</th>`).join('')}</tr></thead>`;
+
+  const body = `<tbody>
+    ${rows.map((row, idx) => {
+      const originalIndex = row.__idx;
+      const isHighlighted = hi.has(idx);
+      const cls = isHighlighted ? 'highlight' : '';
+      const ruleId = isHighlighted && ruleMap[originalIndex] ? ruleMap[originalIndex][0] : null;
+      const ruleName = ruleId ? Object.keys(ruleTitles)[ruleId - 1] : '';
+
+      const coachButton = isHighlighted
+        ? `<button class="ai-coach-btn text-blue-500 hover:text-blue-700" data-row-index="${originalIndex}" data-rule-name="${ruleName}" title="AI 코치에게 물어보기"><i class="fas fa-user-md"></i></button>`
+        : '';
+
+      return `<tr class="border-b hover:bg-gray-50 ${cls}">
+        ${dataHeaders.map(c => `<td class="p-2">${row[c] ?? ''}</td>`).join('')}
+        <td class="p-2 text-center">${coachButton}</td>
+      </tr>`;
+    }).join('')}
+  </tbody>`;
+
+  tbl.innerHTML = head + body;
+  $tableContainer.innerHTML = '';
+  $tableContainer.appendChild(tbl);
+}
+
+function renderAiVoucherResults(results) {
+    $tableContainer.classList.add('hidden');
+    $aiVoucherResultsContainer.classList.remove('hidden');
+    $aiVoucherResultsContainer.innerHTML = '';
+
+    if (!results || results.length === 0) {
+        $aiVoucherResultsContainer.innerHTML = '<p class="text-gray-500 text-center p-8">AI 분석 결과, 특별한 회계적 오류가 발견되지 않았습니다.</p>';
+        return;
+    }
+
+    const errorVouchers = results.filter(r => r.analysis.isError);
+
+    if (errorVouchers.length === 0) {
+        $aiVoucherResultsContainer.innerHTML = '<p class="text-green-600 font-semibold text-center p-8">AI 분석 완료! 모든 전표가 대차평형의 원리를 만족합니다.</p>';
+        return;
+    }
+
+    logMsg(`AI 전표세트 분석 완료. ${errorVouchers.length}개의 잠재적 오류 발견.`, 'success');
+
+    errorVouchers.forEach(voucher => {
+        const card = document.createElement('div');
+        card.className = 'voucher-card bg-white p-4 rounded-lg shadow-md mb-4';
+
+        const analysis = voucher.analysis;
+        const entries = voucher.entries;
+
+        let entriesHtml = '<table class="w-full text-xs mt-3 border-t pt-3">';
+        entriesHtml += `<thead class="bg-gray-50"><tr>
+            ${['계정과목', '차변금액', '대변금액', '거래처', '적요'].map(h => `<th class="p-1 text-left font-medium">${h}</th>`).join('')}
+        </tr></thead><tbody>`;
+        entries.forEach(e => {
+            entriesHtml += `<tr class="border-b">
+                <td class="p-1">${e['계정과목'] || ''}</td>
+                <td class="p-1 text-right">${e['차변금액'] ? parseInt(e['차변금액']).toLocaleString() : ''}</td>
+                <td class="p-1 text-right">${e['대변금액'] ? parseInt(e['대변금액']).toLocaleString() : ''}</td>
+                <td class="p-1">${e['거래처'] || ''}</td>
+                <td class="p-1">${e['적요'] || ''}</td>
+            </tr>`;
+        });
+        entriesHtml += '</tbody></table>';
+
+        card.innerHTML = `
+            <div class="flex justify-between items-start">
+                <div>
+                    <span class="text-xs bg-red-100 text-red-800 font-bold px-2 py-1 rounded-full">${analysis.errorType}</span>
+                    <h4 class="text-lg font-bold mt-1">전표일자: ${voucher.date} / 전표번호: ${voucher.voucherNo}</h4>
+                </div>
+            </div>
+            <div class="mt-3 space-y-3">
+                <div>
+                    <h5 class="font-semibold text-gray-700">🚨 오류 원인</h5>
+                    <p class="text-sm text-gray-600 bg-gray-50 p-2 rounded">${analysis.cause.replace(/\n/g, '<br>')}</p>
+                </div>
+                <div>
+                    <h5 class="font-semibold text-gray-700">💡 해결 방안</h5>
+                    <p class="text-sm text-gray-600 bg-gray-50 p-2 rounded">${analysis.solution.replace(/\n/g, '<br>')}</p>
+                </div>
+            </div>
+            <details class="mt-3 text-sm">
+                <summary class="cursor-pointer text-blue-600">관련 분개 보기</summary>
+                ${entriesHtml}
+            </details>
+        `;
+        $aiVoucherResultsContainer.appendChild(card);
     });
-  }else{ fetchAndRender(f,[],{}, 'AND', logicTree); }
-};
-
-/* ───────── 7. 분석 실행 ───────── */
-$run.onclick=()=>{ analyze(); };
-async function analyze(){
-  const f=$file.files[0]; if(!f){ log('파일을 먼저 선택하세요.','error'); return; }
-
-  const activeRules=[...collectRuleIds(logicTree)];
-  if(!activeRules.length){ log('활성화된 규칙이 없습니다.','error'); return; }
-
-  const vals=collectValues(logicTree);
-
-  await fetchAndRender(
-    f,
-    activeRules,
-    vals,
-    'AND',
-    logicTree
-  );
-}
-
-/* ───────── 8. 서버 호출 & 결과 처리 ───────── */
-async function fetchAndRender(file,active,vals,logic='AND',tree={}){
-  const fd=new FormData();
-  fd.append('file',file);
-  fd.append('active_rules',JSON.stringify(active));
-  fd.append('values',JSON.stringify(vals));
-  fd.append('logic_op',logic);
-  fd.append('logic_tree', JSON.stringify(tree));
-
-  $loading.classList.remove('hidden');
-  try{
-    const res=await fetch('/analyze',{method:'POST',body:fd});
-    if(!res.ok) throw new Error(await res.text());
-    const data=await res.json();
-
-    dataHeaders=data.headers; journalData=data.rows;
-
-    /* 하이라이트 셋 */
-    const flagged=new Set(data.flagged_indices);
-    let hi=new Set(flagged);
-    if($chkSet.checked){
-      const keys=new Set([...flagged].map(i=>`${journalData[i]['전표일자']}|${journalData[i]['전표번호']}`));
-      journalData.forEach((r,i)=>{ if(keys.has(`${r['전표일자']}|${r['전표번호']}`)) hi.add(i); });
-    }
-
-    /* 표시할 행 선택 */
-    let rows=journalData.map((r,i)=>({__idx:i,...r}));
-    if($chkOnly.checked){
-      rows=rows.filter(r=>hi.has(r.__idx));
-    }
-
-    const hiDisp=new Set();
-    rows.forEach((r,i)=>{ if(hi.has(r.__idx)) hiDisp.add(i); });
-    rows=rows.map(r=>{ const c={...r}; delete c.__idx; return c; });
-
-    const rMap={}; for(const k in data.rule_map) rMap[+k]=data.rule_map[k];
-    renderTable(rows,hiDisp,rMap);
-    log(`분석 완료 – ${hiDisp.size}행 하이라이트`,'success');
-  }catch(e){ log('분석 오류: '+e.message,'error'); }
-  finally{ $loading.classList.add('hidden'); }
 }
 
 
-/* ───────── 9. 초기 렌더 ───────── */
-renderTree();
+/* ───────── 6. 이벤트 리스너 설정 ───────── */
+function setupEventListeners() {
+    // 파일 선택
+    $file.onchange = e => {
+        const f = e.target.files[0];
+        if (!f) return;
+        $fileName.textContent = f.name;
+        logMsg(`파일 선택: ${f.name}`, 'info');
+
+        // CSV 파일 미리보기
+        if (f.name.toLowerCase().endsWith('.csv')) {
+            Papa.parse(f, {
+                header: true,
+                complete: res => {
+                    originalJournalData = res.data.map(row => {
+                        const newRow = {};
+                        for (const key in row) {
+                            newRow[key.trim()] = row[key];
+                        }
+                        return newRow;
+                    });
+                    dataHeaders = Object.keys(originalJournalData[0]);
+                    journalData = originalJournalData.map((r, i) => ({ ...r, __idx: i }));
+                    renderTable(journalData);
+                    logMsg('CSV 파싱 및 미리보기 완료', 'success');
+                },
+                error: err => logMsg(`CSV 파싱 오류: ${err.message}`, 'error')
+            });
+        } else {
+             // 엑셀 파일은 분석 시점에 서버에서 처리
+            originalJournalData = [];
+            dataHeaders = [];
+            journalData = [];
+            $tableContainer.innerHTML = `<p class="text-gray-500">${f.name} 파일이 선택되었습니다. 분석 버튼을 눌러주세요.</p>`;
+        }
+    };
+
+    // 규칙 기반 분석 실행
+    $runAnalysis.onclick = runRuleBasedAnalysis;
+
+    // AI 전표세트 분석 실행
+    $runAiVoucherAnalysis.onclick = runAiVoucherAnalysis;
+
+    // 모달 닫기
+    $closeModalBtn.onclick = () => $modal.classList.add('hidden');
+    $modal.onclick = (e) => {
+        if (e.target === $modal) $modal.classList.add('hidden');
+    };
+
+    // AI 코치 버튼 (이벤트 위임)
+    $tableContainer.onclick = e => {
+        const btn = e.target.closest('.ai-coach-btn');
+        if (btn) {
+            const rowIndex = parseInt(btn.dataset.rowIndex);
+            const ruleName = btn.dataset.ruleName;
+            const entryData = originalJournalData[rowIndex];
+            getAiCoaching(entryData, ruleName);
+        }
+    };
+
+    // 규칙 추가 버튼
+    document.getElementById('add-condition-btn').onclick = () => {
+        const sel = document.getElementById('condition-select').value;
+        logicTree.items.push(newCond(sel));
+        renderTree();
+    };
+    document.getElementById('add-group-btn').onclick = () => {
+        logicTree.items.push(newGroup());
+        renderTree();
+    };
+}
+
+/* ───────── 7. 분석 실행 함수 ───────── */
+async function runRuleBasedAnalysis() {
+    const f = $file.files[0];
+    if (!f) { logMsg('파일을 먼저 선택하세요.', 'error'); return; }
+
+    const activeRules = [...collectRuleIds(logicTree)];
+    if (!activeRules.length) { logMsg('활성화된 규칙이 없습니다.', 'error'); return; }
+
+    const vals = collectValues(logicTree);
+    const fd = new FormData();
+    fd.append('file', f);
+    fd.append('active_rules', JSON.stringify(activeRules));
+    fd.append('values', JSON.stringify(vals));
+    fd.append('logic_op', 'AND'); // 로직트리가 있으므로 이 값은 무시됨
+    fd.append('logic_tree', JSON.stringify(logicTree));
+
+    showLoading(true);
+    try {
+        const res = await fetch('/analyze', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+
+        dataHeaders = data.headers;
+        originalJournalData = data.rows; // 원본 데이터(서식 적용 안됨)
+        // 화면 표시용 데이터 (서식 적용)
+        journalData = data.rows.map(r => ({...r}));
+
+        const flagged = new Set(data.flagged_indices);
+        let hi = new Set(flagged);
+        if ($chkSet.checked) {
+            const keys = new Set([...flagged].map(i => `${journalData[i]['전표일자']}|${journalData[i]['전표번호']}`));
+            journalData.forEach((r, i) => { if (keys.has(`${r['전표일자']}|${r['전표번호']}`)) hi.add(i); });
+        }
+
+        let rowsToDisplay = journalData.map((r, i) => ({ __idx: i, ...r }));
+        if ($chkOnly.checked) {
+            rowsToDisplay = rowsToDisplay.filter(r => hi.has(r.__idx));
+        }
+
+        const displayedHighlightSet = new Set();
+        rowsToDisplay.forEach((r, i) => { if (hi.has(r.__idx)) displayedHighlightSet.add(i); });
+
+        const ruleMap = {};
+        for (const k in data.rule_map) ruleMap[+k] = data.rule_map[k];
+
+        renderTable(rowsToDisplay, displayedHighlightSet, ruleMap);
+        logMsg(`규칙 기반 분석 완료 – ${hi.size}개 분개 확인`, 'success');
+    } catch (e) {
+        logMsg('분석 오류: ' + e.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function runAiVoucherAnalysis() {
+    const f = $file.files[0];
+    if (!f) { logMsg('파일을 먼저 선택하세요.', 'error'); return; }
+
+    const fd = new FormData();
+    fd.append('file', f);
+
+    showLoading(true);
+    logMsg('AI 전표세트 분석을 시작합니다...', 'info');
+    try {
+        const res = await fetch('/ai_analyze_vouchers', { method: 'POST', body: fd });
+        if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || '서버 응답 오류');
+        }
+        const data = await res.json();
+        renderAiVoucherResults(data);
+    } catch (e) {
+        logMsg('AI 분석 오류: ' + e.message, 'error');
+        $aiVoucherResultsContainer.innerHTML = `<p class="text-red-500">${e.message}</p>`;
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function getAiCoaching(entryData, ruleName) {
+    if (!ruleName) {
+        logMsg('규칙 정보를 찾을 수 없어 AI 코칭을 호출할 수 없습니다.', 'error');
+        return;
+    }
+
+    $modalBody.innerHTML = '<div class="flex justify-center items-center p-8"><div class="loader"></div><span class="ml-4">AI 코치가 분석 중입니다...</span></div>';
+    $modal.classList.remove('hidden');
+
+    try {
+        const res = await fetch('/ai_coach', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entry_data: entryData, rule_name: ruleName })
+        });
+        if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || '서버 응답 오류');
+        }
+        const data = await res.json();
+        $modalBody.innerHTML = `
+            <div class="mb-4">
+                <span class="text-sm bg-yellow-100 text-yellow-800 font-bold px-2 py-1 rounded-full">${data.errorType}</span>
+            </div>
+            <div>
+                <h4 class="font-semibold text-gray-700 text-lg">🤔 원인 분석</h4>
+                <p class="text-base text-gray-600 mt-1 bg-gray-50 p-3 rounded-md">${data.cause}</p>
+            </div>
+            <div>
+                <h4 class="font-semibold text-gray-700 text-lg">✅ 해결 방안</h4>
+                <div class="text-base text-gray-600 mt-1 bg-gray-50 p-3 rounded-md">${data.solution}</div>
+            </div>
+        `;
+    } catch (e) {
+        $modalBody.innerHTML = `<p class="text-red-500 p-4">AI 코칭 중 오류 발생: ${e.message}</p>`;
+        logMsg('AI 코칭 오류: ' + e.message, 'error');
+    }
+}
+
+/* ───────── 8. 초기화 ───────── */
+document.addEventListener('DOMContentLoaded', () => {
+    renderTree();
+    setupEventListeners();
+    logMsg('EntryChecker가 준비되었습니다. 파일을 업로드하고 분석을 시작하세요.');
+});
