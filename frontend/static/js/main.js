@@ -133,7 +133,7 @@ function renderTable(rows, hi = new Set(), ruleMap = {}) {
     const ruleId = isHighlighted && ruleMap[originalIndex] ? ruleMap[originalIndex][0] : null;
     const ruleName = ruleId ? Object.keys(ruleTitles)[ruleId - 1] : '';
     const coachButton = isHighlighted ? `<button class="ai-coach-btn text-blue-500 hover:text-blue-700" data-row-index="${originalIndex}" data-rule-name="${ruleName}" title="AI 코치에게 물어보기"><i class="fas fa-user-md"></i></button>` : '';
-    return `<tr class="border-b hover:bg-gray-50 ${cls}">${dataHeaders.map(c => `<td class="p-2">${row[c] ?? ''}</td>`).join('')}<td class="p-2 text-center">${coachButton}</td></tr>`;
+    return `<tr class="border-b hover:bg-gray-50 ${cls}">${dataHeaders.map(c => `<td class="p-2 whitespace-nowrap">${row[c] ?? ''}</td>`).join('')}<td class="p-2 text-center whitespace-nowrap">${coachButton}</td></tr>`;
   }).join('')}</tbody>`;
   tbl.innerHTML = head + body;
   $tableWrap.innerHTML = ''; $tableWrap.appendChild(tbl);
@@ -152,8 +152,8 @@ function renderAiVoucherResults(results) {
         card.className = 'voucher-card bg-white p-4 rounded-lg shadow-md mb-4';
         const { analysis, entries } = voucher;
         let entriesHtml = '<table class="w-full text-xs mt-3 border-t pt-3">';
-        entriesHtml += `<thead class="bg-gray-50"><tr>${['계정과목', '차변금액', '대변금액', '거래처코드', '적요'].map(h => `<th class="p-1 text-left font-medium whitespace-nowrap">${h}</th>`).join('')}</tr></thead><tbody>`;
-        entries.forEach(e => { entriesHtml += `<tr class="border-b"><td class="p-1 whitespace-nowrap">${e['계정과목'] || ''}</td><td class="p-1 text-right whitespace-nowrap">${e['차변금액'] ? parseInt(e['차변금액']).toLocaleString() : ''}</td><td class="p-1 text-right whitespace-nowrap">${e['대변금액'] ? parseInt(e['대변금액']).toLocaleString() : ''}</td><td class="p-1 whitespace-nowrap">${e['거래처코드'] || ''}</td><td class="p-1 whitespace-nowrap">${e['적요'] || ''}</td></tr>`; });
+        entriesHtml += `<thead class="bg-gray-50"><tr>${['계정과목', '차변금액', '대변금액', '거래처', '적요'].map(h => `<th class="p-1 text-left font-medium">${h}</th>`).join('')}</tr></thead><tbody>`;
+        entries.forEach(e => { entriesHtml += `<tr class="border-b"><td class="p-1">${e['계정과목'] || ''}</td><td class="p-1 text-right">${e['차변금액'] ? parseInt(e['차변금액']).toLocaleString() : ''}</td><td class="p-1 text-right">${e['대변금액'] ? parseInt(e['대변금액']).toLocaleString() : ''}</td><td class="p-1">${e['거래처'] || ''}</td><td class="p-1">${e['적요'] || ''}</td></tr>`; });
         entriesHtml += '</tbody></table>';
         card.innerHTML = `<div class="flex justify-between items-start"><div><span class="text-xs bg-red-100 text-red-800 font-bold px-2 py-1 rounded-full">${analysis.errorType}</span><h4 class="text-lg font-bold mt-1">전표일자: ${voucher.date} / 전표번호: ${voucher.voucherNo}</h4></div></div><div class="mt-3 space-y-3"><div><h5 class="font-semibold text-gray-700">🚨 오류 원인</h5><p class="text-sm text-gray-600 bg-gray-50 p-2 rounded">${analysis.cause.replace(/\n/g, '<br>')}</p></div><div><h5 class="font-semibold text-gray-700">💡 해결 방안</h5><p class="text-sm text-gray-600 bg-gray-50 p-2 rounded">${analysis.solution.replace(/\n/g, '<br>')}</p></div></div><details class="mt-3 text-sm"><summary class="cursor-pointer text-blue-600">관련 분개 보기</summary>${entriesHtml}</details>`;
         $aiVoucherResults.appendChild(card);
