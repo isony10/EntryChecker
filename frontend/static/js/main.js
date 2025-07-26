@@ -220,8 +220,33 @@ async function getAiCoaching(entryData, ruleName) {
 
 document.addEventListener('DOMContentLoaded', () => {
     renderTree();
-    $file.onchange = e => { const f = e.target.files[0]; if (!f) return; $fileName.textContent = f.name; logMsg(`파일 선택: ${f.name}`, 'info'); if (f.name.toLowerCase().endsWith('.csv')) { Papa.parse(f, { header: true, complete: res => { originalJournalData = res.data.map(row => { const newRow = {}; for (const key in row) { newRow[key.trim()] = row[key]; } return newRow; }); dataHeaders = Object.keys(originalJournalData[0]); journalData = originalJournalData.map((r, i) => ({ ...r, __idx: i })); renderTable(journalData); logMsg('CSV 파싱 및 미리보기 완료', 'success'); }, error: err => logMsg(`CSV 파싱 오류: ${err.message}`, 'error') }); } else { originalJournalData = []; dataHeaders = []; journalData = []; $tableContainer.innerHTML = `<p class="text-gray-500">${f.name} 파일이 선택되었습니다. 분석 버튼을 눌러주세요.</p>`; } };
-    $runAnalysis.onclick = runRuleBasedAnalysis;
+    $file.onchange = async e => {
+        const f = e.target.files[0];
+        if (!f) return;
+        $fileName.textContent = f.name;
+        logMsg(`파일 선택: ${f.name}`, 'info');
+        const fd = new FormData();
+        fd.append('file', f);
+        showLoading(true);
+        try {
+            const res = await fetch('/preview', { method: 'POST', body: fd });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            originalJournalData = data.rows;
+            dataHeaders = data.headers;
+            journalData = originalJournalData.map((r, i) => ({ ...r, __idx: i }));
+            renderTable(journalData);
+            logMsg('파일 파싱 및 미리보기 완료', 'success');
+        } catch (err) {
+            logMsg('파일 파싱 오류: ' + err.message, 'error');
+            originalJournalData = [];
+            dataHeaders = [];
+            journalData = [];
+            $tableContainer.innerHTML = `<p class="text-red-500">${err.message}</p>`;
+        } finally {
+            showLoading(false);
+        }
+    };    $runAnalysis.onclick = runRuleBasedAnalysis;
     $runAiVoucherAnalysis.onclick = runAiVoucherAnalysis;
     $closeModalBtn.onclick = () => $modal.classList.add('hidden');
     $modal.onclick = (e) => { if (e.target === $modal) $modal.classList.add('hidden'); };
