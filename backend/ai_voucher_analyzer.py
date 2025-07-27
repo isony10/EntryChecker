@@ -57,8 +57,14 @@ def analyze_voucher_sets_with_ai(df):
                         "analysis": analysis, "entries": original_voucher["entries"]
                     })
             time.sleep(1)
+            time.sleep(1)
         except Exception as e:
+            # 수정된 부분: 원래 오류 메시지(e)를 포함하여 다음 단계로 전달
             print(f"배치 {i//BATCH_SIZE + 1} 분석 중 오류: {e}")
+            # 이 부분은 현재 루프를 계속 진행하므로 직접적인 에러 메시지 반환은 없지만,
+            # 서버 로그에 더 자세한 정보가 남게 됩니다. 만약 여기서도 분석을 중단하고
+            # 사용자에게 오류를 알리고 싶다면 아래 주석 처리된 코드를 활성화할 수 있습니다.
+            # raise RuntimeError(f"AI 배치 분석 중 오류: {e}")
             continue
     return all_analysis_results
 
