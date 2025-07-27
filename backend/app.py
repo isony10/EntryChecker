@@ -105,4 +105,5 @@ def ai_coach():
         return jsonify({"error": f"AI 코칭 중 오류가 발생했습니다: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8000)
+    # 호스트를 '0.0.0.0'으로 지정해야 클라우드 호스팅 환경에서 외부 접근이 가능하다
+    app.run(host='0.0.0.0', debug=True, port=8000)
