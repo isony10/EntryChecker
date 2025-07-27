@@ -57,4 +57,5 @@ def get_single_entry_suggestion(entry_data, rule_name):
         return json.loads(sanitized_text)
     except Exception as e:
         print(f"Gemini API 호출 중 오류 발생 (ai_coach): {e}")
-        raise RuntimeError("AI 분석 중 오류가 발생했습니다.")
+        # 수정된 부분: 원래 오류 메시지(e)를 포함하여 전달
+        raise RuntimeError(f"AI 분석 중 오류가 발생했습니다: {e}")
