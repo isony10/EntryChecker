@@ -43,7 +43,10 @@ def analyze_voucher_sets_with_ai(df):
         try:
             response = gemini_model.generate_content(prompt)
             raw_response_text = response.text.strip().replace("```json", "").replace("```", "")
-            json_compatible_text = raw_response_text.replace('NaN', 'null')
+            # AI 응답이 JSON으로 시작하는지 확인하여 HTML 오류 페이지 등을 걸러냅니다.
+            if not raw_response_text.startswith(('{', '[')):
+                # 예상치 못한 응답(HTML 등)을 받았을 경우, 명확한 오류를 발생시킵니다.
+                raise ValueError(f"AI가 유효하지 않은 응답을 반환했습니다. (HTML 등 수신 의심)")
             sanitized_text = raw_response_text.replace('\\', '\\\\')
             batch_results = json.loads(sanitized_text)
             for idx, analysis in enumerate(batch_results):
