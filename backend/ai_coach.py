@@ -1,5 +1,6 @@
 import os
 import json
+import re  # 정규표현식 모듈 import
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -34,7 +35,7 @@ def get_single_entry_suggestion(entry_data, rule_name):
 
     ### 지침 (Instructions)
     1.  **'오류 원인' 작성 시:** 단순히 "날짜가 잘못되었습니다"가 아니라, "주말에 거래가 입력된 것은 날짜 오기입이거나, 내부통제 절차 없이 비용이 처리되었을 수 있는 위험 신호입니다." 와 같이 회계적 리스크 관점에서 설명해주세요.
-    2.  **'해결 방안' 작성 시:** "수정하세요"가 아니라, "1. 먼저, 세금계산서나 영수증 원본에 적힌 실제 거래일을 확인합니다. 2. 만약 단순 오기입이라면, 전표일자를 정확한 날짜로 수정합니다. 3. 만약 실제 주말에 발생한 비용이라면, 주말 근무 신청서 등 정당성을 입증할 내부 증빙을 찾아 첨부해야 합니다." 와 같이 구체적이고 실행 가능한 단계별 행동 지침을 제시해주세요.
+    2.  **'해결 방안' 작성 시:** "수정하세요"가 아니라, "1. 먼저, 세금계산서나 영수증 원본에 적힌 실제 거래일을 확인합니다. 2. 만약 단순 오기입이라면, 전표일자를 정확한 날짜로 수정합니다. 수정 후에는 관련 부서와 다시 확인하여 재발을 방지하세요.<br>3. 만약 실제 주말에 발생한 경우, 주말 근무 신청서 등 정당성을 입증할 내부 증빙을 찾아 첨부해야 합니다." 와 같이 구체적이고 실행 가능한 단계별 행동 지침을 제시해주세요.
     3.  전체적인 톤앤매너는 항상 친절하고 격려하는 어조를 유지해주세요.
 
     ### 응답 형식 (Output Format)
@@ -47,19 +48,19 @@ def get_single_entry_suggestion(entry_data, rule_name):
     """
     try:
         response = gemini_model.generate_content(prompt)
-        raw_response_text = response.text.strip().replace("```json", "").replace("```", "")
-        # AI 응답이 JSON으로 시작하는지 확인하여 HTML 오류 페이지 등을 걸러냅니다.
-        if not raw_response_text.startswith(('{', '[')):
-            # 예상치 못한 응답(HTML 등)을 받았을 경우, 전체 응답을 로깅하여 디버깅에 활용합니다.
-            print(f"AI raw response for debugging (ai_coach): {raw_response_text}")
-            # 네트워크 연결 상태나 API 사용량 제한을 확인하라는 안내를 포함합니다.
-            raise ValueError(
-                "AI가 유효하지 않은 응답을 반환했습니다. (HTML 등 수신 의심) \n"
-                "네트워크 연결 또는 API 사용량 제한을 확인해주세요."
-            )
-        sanitized_text = raw_response_text.replace('\\', '\\\\')
-        return json.loads(sanitized_text)
+        response_text = response.text
+
+        # 정규표현식을 사용하여 응답에서 JSON 객체 부분만 추출
+        match = re.search(r'\{[\s\S]*\}', response_text)
+        if not match:
+            raise ValueError(f"AI 응답에서 유효한 JSON 객체를 찾을 수 없습니다. Raw Response: {response_text}")
+
+        json_text = match.group(0)
+        
+        # NaN 값을 null로 치환 (이전 오류 방지)
+        json_compatible_text = json_text.replace('NaN', 'null')
+        
+        return json.loads(json_compatible_text)
     except Exception as e:
         print(f"Gemini API 호출 중 오류 발생 (ai_coach): {e}")
-        # 수정된 부분: 원래 오류 메시지(e)를 포함하여 전달
         raise RuntimeError(f"AI 분석 중 오류가 발생했습니다: {e}")
