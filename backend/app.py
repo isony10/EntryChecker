@@ -34,13 +34,15 @@ def read_file_to_df(file):
         for enc in enc_try:
             try:
                 file.seek(0)
-                df = pd.read_csv(file, encoding=enc, sep=None, engine='python')
+                # dtype=str 옵션을 추가하여 모든 데이터를 문자열로 읽어옵니다.
+                df = pd.read_csv(file, encoding=enc, sep=None, engine='python', dtype=str).fillna('')
                 if not df.empty and len(df.columns) > 0: return df
             except Exception: continue
         raise ValueError("CSV 파일을 읽는 데 실패했습니다. 인코딩 또는 구분자를 확인해주세요.")
     elif filename.endswith(('.xls', '.xlsx')):
         file.seek(0)
-        return pd.read_excel(file, engine='openpyxl')
+        # dtype=str 옵션을 추가하여 모든 데이터를 문자열로 읽어옵니다.
+        return pd.read_excel(file, engine='openpyxl', dtype=str).fillna('')
     else:
         raise ValueError("지원하지 않는 파일 형식입니다. CSV 또는 Excel 파일을 업로드해주세요.")
 @app.route('/preview', methods=['POST'])
