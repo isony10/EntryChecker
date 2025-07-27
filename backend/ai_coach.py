@@ -50,9 +50,13 @@ def get_single_entry_suggestion(entry_data, rule_name):
         raw_response_text = response.text.strip().replace("```json", "").replace("```", "")
         # AI 응답이 JSON으로 시작하는지 확인하여 HTML 오류 페이지 등을 걸러냅니다.
         if not raw_response_text.startswith(('{', '[')):
-            # 예상치 못한 응답(HTML 등)을 받았을 경우, 명확한 오류를 발생시킵니다.
-            raise ValueError(f"AI가 유효하지 않은 응답을 반환했습니다. (HTML 등 수신 의심)")
-
+            # 예상치 못한 응답(HTML 등)을 받았을 경우, 전체 응답을 로깅하여 디버깅에 활용합니다.
+            print(f"AI raw response for debugging (ai_coach): {raw_response_text}")
+            # 네트워크 연결 상태나 API 사용량 제한을 확인하라는 안내를 포함합니다.
+            raise ValueError(
+                "AI가 유효하지 않은 응답을 반환했습니다. (HTML 등 수신 의심) \n"
+                "네트워크 연결 또는 API 사용량 제한을 확인해주세요."
+            )
         sanitized_text = raw_response_text.replace('\\', '\\\\')
         return json.loads(sanitized_text)
     except Exception as e:
