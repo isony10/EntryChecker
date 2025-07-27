@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import re  # 정규표현식 모듈 import
 import pandas as pd
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -42,32 +43,33 @@ def analyze_voucher_sets_with_ai(df):
         prompt = create_prompt_for_batch(batch)
         try:
             response = gemini_model.generate_content(prompt)
-            raw_response_text = response.text.strip().replace("```json", "").replace("```", "")
-            # AI 응답이 JSON으로 시작하는지 확인하여 HTML 오류 페이지 등을 걸러냅니다.
-            if not raw_response_text.startswith(('{', '[')):
-                # 예상치 못한 응답(HTML 등)을 받았을 경우, 전체 응답을 로깅하여 디버깅에 활용합니다.
-                print(f"AI raw response for debugging (ai_voucher_analyzer): {raw_response_text}")
-                raise ValueError(
-                    "AI가 유효하지 않은 응답을 반환했습니다. (HTML 등 수신 의심) \n"
-                    "네트워크 연결 또는 API 사용량 제한을 확인해주세요."
-                )
-            sanitized_text = raw_response_text.replace('\\', '\\\\')
-            batch_results = json.loads(sanitized_text)
+            response_text = response.text
+
+            # 정규표현식을 사용하여 응답에서 JSON 배열 부분만 추출
+            match = re.search(r'\[[\s\S]*\]', response_text)
+            if not match:
+                print(f"AI raw response for debugging (ai_voucher_analyzer): {response_text}")
+                raise ValueError(f"AI 응답에서 유효한 JSON 배열을 찾을 수 없습니다.")
+
+            json_text = match.group(0)
+            
+            # NaN 값을 null로 치환 (이전 오류 방지)
+            json_compatible_text = json_text.replace('NaN', 'null')
+
+            batch_results = json.loads(json_compatible_text)
             for idx, analysis in enumerate(batch_results):
                 if analysis.get("isError"):
-                    original_voucher = batch[idx]
-                    all_analysis_results.append({
-                        "date": original_voucher["date"], "voucherNo": original_voucher["voucherNo"],
-                        "analysis": analysis, "entries": original_voucher["entries"]
-                    })
+                    # batch_results의 id는 1부터 시작하고, batch 리스트의 인덱스는 0부터 시작하므로 맞춰줍니다.
+                    original_voucher_index = analysis.get("id", idx + 1) - 1
+                    if 0 <= original_voucher_index < len(batch):
+                        original_voucher = batch[original_voucher_index]
+                        all_analysis_results.append({
+                            "date": original_voucher["date"], "voucherNo": original_voucher["voucherNo"],
+                            "analysis": analysis, "entries": original_voucher["entries"]
+                        })
             time.sleep(1)
         except Exception as e:
-            # 수정된 부분: 원래 오류 메시지(e)를 포함하여 다음 단계로 전달
             print(f"배치 {i//BATCH_SIZE + 1} 분석 중 오류: {e}")
-            # 이 부분은 현재 루프를 계속 진행하므로 직접적인 에러 메시지 반환은 없지만,
-            # 서버 로그에 더 자세한 정보가 남게 됩니다. 만약 여기서도 분석을 중단하고
-            # 사용자에게 오류를 알리고 싶다면 아래 주석 처리된 코드를 활성화할 수 있습니다.
-            # raise RuntimeError(f"AI 배치 분석 중 오류: {e}")
             continue
     return all_analysis_results
 
