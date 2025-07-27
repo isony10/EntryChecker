@@ -5,7 +5,7 @@ import pandas as pd
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 try:
     api_key = os.environ.get("GEMINI_API_KEY")
