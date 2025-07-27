@@ -57,7 +57,6 @@ def analyze_voucher_sets_with_ai(df):
                         "analysis": analysis, "entries": original_voucher["entries"]
                     })
             time.sleep(1)
-            time.sleep(1)
         except Exception as e:
             # 수정된 부분: 원래 오류 메시지(e)를 포함하여 다음 단계로 전달
             print(f"배치 {i//BATCH_SIZE + 1} 분석 중 오류: {e}")
