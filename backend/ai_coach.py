@@ -48,6 +48,7 @@ def get_single_entry_suggestion(entry_data, rule_name):
     try:
         response = gemini_model.generate_content(prompt)
         raw_response_text = response.text.strip().replace("```json", "").replace("```", "")
+        json_compatible_text = raw_response_text.replace('NaN', 'null')
         sanitized_text = raw_response_text.replace('\\', '\\\\')
         return json.loads(sanitized_text)
     except Exception as e:
