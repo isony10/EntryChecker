@@ -43,6 +43,7 @@ def analyze_voucher_sets_with_ai(df):
         try:
             response = gemini_model.generate_content(prompt)
             raw_response_text = response.text.strip().replace("```json", "").replace("```", "")
+            json_compatible_text = raw_response_text.replace('NaN', 'null')
             sanitized_text = raw_response_text.replace('\\', '\\\\')
             batch_results = json.loads(sanitized_text)
             for idx, analysis in enumerate(batch_results):
